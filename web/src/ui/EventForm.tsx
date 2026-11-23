@@ -181,13 +181,12 @@ export function EventForm(props: { eventId?: string }) {
           {t.common.cancel}
         </button>
       </div>
-
-      {importEnabled && (
-        <section className="card stack import">
-          <h2>
-            <Icon name="download" size={18} /> {t.import.title}
-          </h2>
-          <p className="muted small">{t.import.hint}</p>
+      <section className="card stack import">
+        <h2>
+          <Icon name="download" size={18} /> {t.import.title}
+        </h2>
+        <p className="muted small">{importEnabled ? t.import.hint : t.import.disabled}</p>
+        {importEnabled && (
           <div className="row gap">
             <input
               type="url"
@@ -207,18 +206,18 @@ export function EventForm(props: { eventId?: string }) {
               {t.import.run}
             </button>
           </div>
-          {importState.message && <p className={importState.busy ? 'muted small' : 'notice small'}>{importState.message}</p>}
-          {importState.warnings.length > 0 && (
-            <ul className="warnings small">
-              {importState.warnings.map((w, i) => (
-                <li key={i}>
-                  <Icon name="alert" size={14} /> {w}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+        )}
+        {importState.message && <p className={importState.busy ? 'muted small' : 'notice small'}>{importState.message}</p>}
+        {importState.warnings.length > 0 && (
+          <ul className="warnings small">
+            {importState.warnings.map((w, i) => (
+              <li key={i}>
+                <Icon name="alert" size={14} /> {w}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card stack">
         <label>

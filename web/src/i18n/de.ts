@@ -115,7 +115,7 @@ export const de = {
     run: 'Auslesen',
     running: 'Seite wird gelesen …',
     done: 'Übernommen. Bitte prüfen und ergänzen.',
-    disabled: 'Der Import ist auf diesem Server nicht eingerichtet.',
+    disabled: 'Der Import ist noch nicht eingerichtet: Auf dem Server fehlt die Variable ANTHROPIC_API_KEY (siehe README).',
   },
   costs: {
     title: 'Kosten',

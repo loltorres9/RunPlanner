@@ -117,7 +117,7 @@ export const en: Messages = {
     run: 'Read',
     running: 'Reading page …',
     done: 'Imported. Please check and complete.',
-    disabled: 'Import is not set up on this server.',
+    disabled: 'Import is not set up yet: the server is missing the ANTHROPIC_API_KEY variable (see README).',
   },
   costs: {
     title: 'Costs',
