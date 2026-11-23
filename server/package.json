@@ -1,6 +1,6 @@
 {
   "name": "@runplanner/server",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.12.0",
-    "@fastify/static": "^8.0.3",
+    "@fastify/static": "^10.1.12",
     "@runplanner/shared": "*",
     "fastify": "^5.2.0",
     "pg": "^8.13.1",

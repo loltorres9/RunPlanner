@@ -182,11 +182,15 @@ function SignedIn(props: { me: Me; setMe: (me: Me) => void; logout: () => void; 
 
   const [page, id, action] = route;
   let screen;
-  let tab: string = page ?? 'calendar';
+  let tab: string = page ?? 'list';
   if (page === 'new') screen = <EventForm />;
   else if (page === 'event' && id && action === 'edit') screen = <EventForm eventId={id} />;
   else if (page === 'event' && id) screen = <EventDetail eventId={id} />;
-  else if (page === 'list') screen = <ListScreen />;
+  else if (page === 'list' || page === undefined || page === '') {
+    // Die Terminliste ist die Startseite.
+    screen = <ListScreen />;
+    tab = 'list';
+  }
   else if (page === 'costs') screen = <CostsScreen />;
   else if (page === 'group') screen = <GroupScreen />;
   else if (page === 'settings') screen = <SettingsScreen />;

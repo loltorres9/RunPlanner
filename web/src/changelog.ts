@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.10.0',
+    date: '2026-11-23',
+    de: [
+      'Die Terminliste ist jetzt die Startseite und steht in der Leiste unten ganz links, der Kalender daneben.',
+      'Sicherheitsupdate für die Auslieferung der App-Dateien.',
+    ],
+    en: [
+      'The event list is now the start page and sits first in the bottom bar, with the calendar next to it.',
+      'Security update for serving the app files.',
+    ],
+  },
+  {
     version: '0.9.0',
     date: '2026-11-23',
     de: [
