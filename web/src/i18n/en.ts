@@ -180,6 +180,7 @@ export const en: Messages = {
     you: 'you',
   },
   settings: {
+    version: 'Version {version}',
     title: 'Settings',
     profile: 'Profile',
     language: 'Language',
