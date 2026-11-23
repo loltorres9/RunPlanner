@@ -6,6 +6,7 @@ import { navigate, todayIso, useApp } from '../state.js';
 import { eventColor, initials } from './EventCard.js';
 import { Icon } from './Icon.js';
 import { CommentsSection } from './CommentsSection.js';
+import { RaceTrackPanel } from './RaceTrackPanel.js';
 import { StaysSection } from './StaysSection.js';
 
 export function eventToInput(event: RunEvent): EventInput {
@@ -123,6 +124,7 @@ export function EventDetail(props: { eventId: string }) {
           currency={event.currency}
           myId={me.user.id}
           onStatus={(status) => update(() => api.setParticipation(race.id, status))}
+          onChange={update}
         />
       ))}
 
@@ -144,7 +146,13 @@ export function EventDetail(props: { eventId: string }) {
   );
 }
 
-function RaceCard(props: { race: Race; currency: string; myId: string; onStatus: (status: ParticipationStatus | null) => void }) {
+function RaceCard(props: {
+  race: Race;
+  currency: string;
+  myId: string;
+  onStatus: (status: ParticipationStatus | null) => void;
+  onChange: (action: () => Promise<RunEvent>) => Promise<void>;
+}) {
   const { t, date, money, number } = useI18n();
   const { race } = props;
   const mine = race.participants.find((p) => p.userId === props.myId)?.status ?? null;
@@ -172,6 +180,8 @@ function RaceCard(props: { race: Race; currency: string; myId: string; onStatus:
         {race.cutoff && <span>⏱ {race.cutoff}</span>}
       </div>
       {race.feeNote && <p className="muted small">{race.feeNote}</p>}
+
+      <RaceTrackPanel race={race} onChange={props.onChange} />
 
       <div className="participants">
         {race.participants.length === 0 ? (

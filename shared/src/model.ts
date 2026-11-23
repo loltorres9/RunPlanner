@@ -103,6 +103,17 @@ export interface Race {
   feeNote: string | null;
   cutoff: string | null;
   participants: Participation[];
+  /** Hochgeladener Streckenverlauf (nur Kennzahlen; die Punkte gibt es einzeln). */
+  track: TrackSummary | null;
+}
+
+export interface TrackSummary {
+  name: string | null;
+  distanceKm: number;
+  gainM: number | null;
+  lossM: number | null;
+  minEle: number | null;
+  maxEle: number | null;
 }
 
 export interface RunEvent {

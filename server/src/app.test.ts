@@ -419,3 +419,48 @@ describe('Kommentare', () => {
     expect((await call('GET', `/api/events/${id}/comments`, fremd.token)).status).toBe(404);
   });
 });
+
+describe('Streckenverlauf', () => {
+  it('speichert GPX-Verlauf, füllt leere Werte und liefert Punkte', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, {
+      ...sampleEvent,
+      races: [{ name: 'Ohne Werte' }, { name: 'Mit Werten', distanceKm: 21, elevationUpM: 900 }],
+    });
+    const [empty, filled] = created.body.races;
+    expect(empty!.track).toBe(null);
+    const track = {
+      name: 'Basetrail',
+      points: [
+        [47.4, 11.0, 700],
+        [47.5, 11.1, 2900],
+      ],
+      distanceKm: 43.24,
+      gainM: 2200,
+      lossM: 0,
+      minEle: 700,
+      maxEle: 2900,
+    };
+    const a = await call<RunEvent>('PUT', `/api/races/${empty!.id}/track`, anna.token, track);
+    expect(a.status).toBe(200);
+    expect(a.body.races[0]).toMatchObject({ distanceKm: 43.2, elevationUpM: 2200, elevationDownM: 0, track: { name: 'Basetrail', gainM: 2200 } });
+    const b = await call<RunEvent>('PUT', `/api/races/${filled!.id}/track`, anna.token, track);
+    expect(b.body.races[1]).toMatchObject({ distanceKm: 21, elevationUpM: 900 });
+
+    const got = await call<{ points: number[][] }>('GET', `/api/races/${empty!.id}/track`, anna.token);
+    expect(got.body.points).toEqual(track.points);
+    expect((await call('PUT', `/api/races/${empty!.id}/track`, anna.token, { ...track, points: [[95, 0, null], [0, 0, null]] })).status).toBe(400);
+
+    const fremd = await register('fremd@x.de', 'Fremd');
+    expect((await call('GET', `/api/races/${empty!.id}/track`, fremd.token)).status).toBe(404);
+    const removed = await call<RunEvent>('DELETE', `/api/races/${empty!.id}/track`, anna.token);
+    expect(removed.body.races[0]!.track).toBe(null);
+    // Beim Bearbeiten der Veranstaltung bleibt der Verlauf einer bekannten Strecke erhalten.
+    const kept = await call<RunEvent>('PUT', `/api/events/${created.body.id}`, anna.token, {
+      ...sampleEvent,
+      races: b.body.races.map((r) => ({ id: r.id, name: r.name })),
+    });
+    expect(kept.body.races[1]!.track).not.toBe(null);
+  });
+});

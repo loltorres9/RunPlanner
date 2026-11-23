@@ -190,6 +190,20 @@ create table if not exists comments (
 );
 
 create index if not exists comments_event_idx on comments (event_id, created_at);
+
+-- Streckenverlauf aus einer GPX-Datei, ausgedünnt, als JSON [[lat, lon, ele], ...].
+create table if not exists race_tracks (
+  race_id text primary key references races(id) on delete cascade,
+  name text,
+  points text not null,
+  distance_km double precision not null,
+  gain_m integer,
+  loss_m integer,
+  min_ele integer,
+  max_ele integer,
+  uploaded_by text not null references users(id),
+  uploaded_at bigint not null
+);
 `;
 
 export async function migrate(db: Db): Promise<void> {
