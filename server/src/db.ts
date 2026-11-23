@@ -138,6 +138,23 @@ create table if not exists stays (
   updated_at bigint not null,
   primary key (event_id, user_id)
 );
+
+-- Nächte, für die ein Vorschlag gedacht ist (Etappenorte), als Tage mit Komma getrennt.
+alter table accommodations add column if not exists nights text not null default '';
+
+-- Wahl pro Nacht bei mehrtägigen Veranstaltungen. Wer pro Nacht wählt, hat keinen
+-- Eintrag in stays; night ist der Lauftag, vor dem die Nacht liegt.
+create table if not exists night_stays (
+  event_id text not null references events(id) on delete cascade,
+  user_id text not null references users(id) on delete cascade,
+  night text not null,
+  choice text not null check (choice in ('none', 'suggested', 'other')),
+  accommodation_id text references accommodations(id) on delete cascade,
+  other_text text,
+  booked boolean not null default false,
+  updated_at bigint not null,
+  primary key (event_id, user_id, night)
+);
 `;
 
 export async function migrate(db: Db): Promise<void> {

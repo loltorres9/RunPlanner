@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { RunEvent } from './model.js';
-import { addDays, costsPerPerson, coversDay, eventTodos } from './summary.js';
+import type { RunEvent, Stay } from './model.js';
+import { addDays, costsPerPerson, coversDay, eventNights, eventTodos, openStays, stayFor } from './summary.js';
 
 function event(overrides: Partial<RunEvent>): RunEvent {
   return {
@@ -79,11 +79,45 @@ describe('eventTodos', () => {
     });
     expect(eventTodos(e, '2027-04-01')).toEqual(['accommodation', 'deadlineSoon']);
     expect(eventTodos(e, '2027-04-11')).toEqual(['accommodation', 'deadlinePassed']);
-    const booked = { ...e, stays: [{ userId: 'a', userName: 'Anna', choice: 'other' as const, accommodationId: null, otherText: 'Oma', booked: true }] };
+    const booked = { ...e, stays: [{ userId: 'a', userName: 'Anna', night: null, choice: 'other' as const, accommodationId: null, otherText: 'Oma', booked: true }] };
     expect(eventTodos(booked, '2027-01-01')).toEqual([]);
     const unbooked = { ...e, stays: [{ ...booked.stays[0]!, booked: false }] };
     expect(eventTodos(unbooked, '2027-01-01')).toEqual(['accommodation']);
     const none = { ...e, stays: [{ ...booked.stays[0]!, choice: 'none' as const, booked: false }] };
     expect(eventTodos(none, '2027-01-01')).toEqual([]);
+  });
+});
+
+describe('Unterkunft pro Nacht', () => {
+  const stay = (night: string | null, booked = true): Stay => ({
+    userId: 'a',
+    userName: 'Anna',
+    night,
+    choice: 'other',
+    accommodationId: null,
+    otherText: 'Hütte',
+    booked,
+  });
+  const e = event({
+    startDate: '2027-09-01',
+    endDate: '2027-09-03',
+    accommodationNeeded: true,
+    races: [race(10, [{ userId: 'a', userName: 'Anna', status: 'registered' }])],
+  });
+
+  it('kennt eine Nacht vor jedem Veranstaltungstag', () => {
+    expect(eventNights(e)).toEqual(['2027-09-01', '2027-09-02', '2027-09-03']);
+    expect(eventNights({ startDate: '2027-09-01', endDate: null })).toEqual([]);
+  });
+
+  it('zählt offene Nächte einzeln', () => {
+    expect(openStays({ ...e, stays: [stay(null)] })).toEqual([]);
+    const partly = { ...e, stays: [stay('2027-09-01'), stay('2027-09-02', false)] };
+    expect(openStays(partly).map((o) => [o.night, o.reason])).toEqual([
+      ['2027-09-02', 'unbooked'],
+      ['2027-09-03', 'undecided'],
+    ]);
+    expect(stayFor(partly, 'a', '2027-09-02')?.booked).toBe(false);
+    expect(stayFor({ ...e, stays: [stay(null)] }, 'a', '2027-09-02')?.night).toBe(null);
   });
 });
