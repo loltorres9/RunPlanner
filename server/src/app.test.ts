@@ -223,7 +223,7 @@ describe('Veranstaltungen', () => {
     const kurz = created.body.races[1]!;
 
     const joined = await call<RunEvent>('PUT', `/api/races/${ultra.id}/participation`, anna.token, { status: 'registered' });
-    expect(joined.body.races[0]!.participants).toEqual([{ userId: anna.me.user.id, userName: 'Anna', status: 'registered' }]);
+    expect(joined.body.races[0]!.participants).toEqual([{ userId: anna.me.user.id, userName: 'Anna', status: 'registered', teamId: null }]);
     await call('PUT', `/api/races/${kurz.id}/participation`, ben.token, { status: 'interested' });
 
     // Anna bearbeitet: Ultra bleibt (mit ID), "Kurz" fällt weg, eine neue Strecke kommt dazu.
@@ -607,5 +607,78 @@ describe('GPX-Suche', () => {
     const found = await call<GpxSearchResult>('POST', `/api/events/${created.body.id}/gpx-search`, anna.token);
     expect(found.body.matchedBy).toBe('ai');
     expect(found.body.candidates.map((c) => c.raceId)).toEqual([created.body.races[0]!.id, null]);
+  });
+});
+
+describe('Teamstrecken', () => {
+  it('Teams gründen und beitreten, eine Person zahlt, Ausgabe wird angelegt', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const carla = await register('carla@x.de', 'Carla', group.body.inviteCode);
+    const dora = await register('dora@x.de', 'Dora', group.body.inviteCode);
+    const [a, b, c] = [anna.me.user.id, ben.me.user.id, carla.me.user.id];
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, {
+      ...sampleEvent,
+      races: [{ name: 'Staffel', fee: 220, teamSize: 3 }],
+    });
+    const race = created.body.races[0]!;
+    expect(race.teamSize).toBe(3);
+    const url = `/api/races/${race.id}/participation`;
+
+    // Anna gründet ein Team, Ben und Carla treten bei.
+    const founded = await call<RunEvent>('PUT', url, anna.token, { status: 'registered' });
+    const team = founded.body.races[0]!.teams[0]!;
+    expect(team).toMatchObject({ name: 'Team Anna', payerId: a, expenseId: null });
+    await call('PUT', url, ben.token, { status: 'registered', teamId: team.id });
+    await call('PUT', url, carla.token, { status: 'interested', teamId: team.id });
+    // Das Team ist voll.
+    expect((await call('PUT', url, dora.token, { status: 'registered', teamId: team.id })).status).toBe(409);
+    // Nur die zahlende Person setzt „Bezahlt“.
+    expect((await call('PUT', url, ben.token, { status: 'paid' })).status).toBe(403);
+
+    const paid = await call<RunEvent>('PUT', url, anna.token, { status: 'paid' });
+    const after = paid.body.races[0]!;
+    expect(after.participants.filter((p) => p.teamId === team.id).map((p) => p.status)).toEqual(['paid', 'paid', 'paid']);
+    const expense = paid.body.expenses[0]!;
+    expect(expense).toMatchObject({ paidBy: a, amountCents: 22000, description: 'Startgebühr Staffel (Team Anna)' });
+    expect(expense.shares.map((s) => [s.userId, s.amountCents])).toEqual([
+      [a, 7334],
+      [b, 7333],
+      [c, 7333],
+    ]);
+    expect(after.teams[0]!.expenseId).toBe(expense.id);
+    // Nur einmal angelegt, auch wenn jemand erneut speichert.
+    const again = await call<RunEvent>('PUT', url, ben.token, { status: 'registered' });
+    expect(again.body.expenses).toHaveLength(1);
+    expect(again.body.races[0]!.participants.find((p) => p.userId === b)!.status).toBe('paid');
+
+    // Dora gründet ein zweites Team.
+    const second = await call<RunEvent>('PUT', url, dora.token, { status: 'interested', teamId: 'new' });
+    expect(second.body.races[0]!.teams.map((t) => t.name)).toEqual(['Team Anna', 'Team Dora']);
+
+    // Doch nicht bezahlt: Status zurück, Ausgabe weg.
+    const unpaid = await call<RunEvent>('PUT', url, anna.token, { status: 'registered' });
+    expect(unpaid.body.expenses).toEqual([]);
+    expect(unpaid.body.races[0]!.participants.find((p) => p.userId === b)!.status).toBe('registered');
+
+    // Zahlende Person wechseln, nur innerhalb des Teams.
+    expect((await call('PUT', `/api/teams/${team.id}`, ben.token, { payerId: dora.me.user.id })).status).toBe(400);
+    const switched = await call<RunEvent>('PUT', `/api/teams/${team.id}`, ben.token, { payerId: b, name: 'Die Gämsen' });
+    expect(switched.body.races[0]!.teams[0]).toMatchObject({ name: 'Die Gämsen', payerId: b, payerName: 'Ben' });
+
+    // Ben tritt aus: Anna zahlt wieder. Leere Teams verschwinden.
+    const left = await call<RunEvent>('PUT', url, ben.token, { status: null });
+    expect(left.body.races[0]!.teams[0]!.payerId).toBe(a);
+    const gone = await call<RunEvent>('PUT', url, dora.token, { status: null });
+    expect(gone.body.races[0]!.teams).toHaveLength(1);
+
+    // Keine Teamstrecke mehr: Teams weg, Anmeldungen bleiben.
+    const edited = await call<RunEvent>('PUT', `/api/events/${created.body.id}`, anna.token, {
+      ...sampleEvent,
+      races: [{ id: race.id, name: 'Staffel', fee: 220 }],
+    });
+    expect(edited.body.races[0]!.teams).toEqual([]);
+    expect(edited.body.races[0]!.participants.map((p) => p.teamId)).toEqual([null, null]);
   });
 });

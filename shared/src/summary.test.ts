@@ -38,10 +38,36 @@ const race = (fee: number | null, participants: RunEvent['races'][number]['parti
   fee,
   feeNote: null,
   cutoff: null,
+  teamSize: null,
   participants,
+  teams: [],
 });
 
 describe('costsPerPerson', () => {
+  it('zählt die Gebühr einer Teamstrecke nur einmal, bei der zahlenden Person', () => {
+    const team = { id: 't', name: 'Team Anna', payerId: 'a', payerName: 'Anna', expenseId: null };
+    const costs = costsPerPerson([
+      event({
+        races: [
+          {
+            ...race(220, [
+              { userId: 'a', userName: 'Anna', status: 'paid', teamId: 't' },
+              { userId: 'b', userName: 'Ben', status: 'paid', teamId: 't' },
+              { userId: 'c', userName: 'Carla', status: 'interested', teamId: null },
+            ]),
+            teamSize: 2,
+            teams: [team],
+          },
+        ],
+      }),
+    ]);
+    expect(costs).toEqual([
+      { userId: 'a', userName: 'Anna', committed: 220, paid: 220, planned: 0, races: 1 },
+      { userId: 'b', userName: 'Ben', committed: 0, paid: 0, planned: 0, races: 1 },
+      { userId: 'c', userName: 'Carla', committed: 0, paid: 0, planned: 110, races: 1 },
+    ]);
+  });
+
   it('trennt angemeldet, bezahlt und geplant', () => {
     const costs = costsPerPerson([
       event({

@@ -22,6 +22,9 @@ interface RaceDraft {
   fee: string;
   feeNote: string;
   cutoff: string;
+  /** Teamstrecke mit Teamgröße. */
+  team: boolean;
+  teamSize: string;
   /** Starttag fiel durch eine Änderung des Zeitraums heraus und wurde geleert. */
   dayCleared: boolean;
 }
@@ -73,6 +76,8 @@ function raceToDraft(race: RaceInput): RaceDraft {
     fee: str(race.fee),
     feeNote: str(race.feeNote),
     cutoff: str(race.cutoff),
+    team: !!race.teamSize,
+    teamSize: str(race.teamSize ?? 3),
     dayCleared: false,
   };
 }
@@ -102,6 +107,11 @@ function int(value: string): number | null {
   return parsed === null ? null : Math.round(parsed);
 }
 
+/** Teamgröße aus dem Formular, auf 2 bis 20 begrenzt. */
+function teamSizeOf(value: string): number {
+  return Math.min(20, Math.max(2, int(value) ?? 2));
+}
+
 function fromDraft(draft: Draft): EventInput {
   return {
     name: draft.name,
@@ -128,6 +138,7 @@ function fromDraft(draft: Draft): EventInput {
         fee: num(r.fee),
         feeNote: r.feeNote || null,
         cutoff: r.cutoff || null,
+        teamSize: r.team ? teamSizeOf(r.teamSize) : null,
       })),
   };
 }
@@ -363,13 +374,37 @@ export function EventForm(props: { eventId?: string }) {
               <input type="time" value={race.startTime} onChange={(e) => setRace(race.key, { startTime: e.target.value })} />
             </label>
             <label>
-              {t.event.fee}
+              {race.team ? t.team.feePerTeam : t.event.fee}
               <input inputMode="decimal" value={race.fee} onChange={(e) => setRace(race.key, { fee: e.target.value })} />
             </label>
             <label>
               {t.event.cutoff}
               <input value={race.cutoff} onChange={(e) => setRace(race.key, { cutoff: e.target.value })} maxLength={120} />
             </label>
+          </div>
+          <div className="row gap wrap">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={race.team}
+                onChange={(e) => setRace(race.key, { team: e.target.checked })}
+              />
+              {t.team.teamRace}
+            </label>
+            {race.team && (
+              <label className="toggle">
+                {t.team.size}
+                <input
+                  type="number"
+                  min={2}
+                  max={20}
+                  inputMode="numeric"
+                  value={race.teamSize}
+                  onChange={(e) => setRace(race.key, { teamSize: e.target.value })}
+                  style={{ width: '5em' }}
+                />
+              </label>
+            )}
           </div>
           <label>
             {t.event.feeNote}
