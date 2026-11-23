@@ -7,6 +7,7 @@ import { daysBetween } from '../dates.js';
 import { DateField } from './DatePicker.js';
 import { eventToInput } from './EventDetail.js';
 import { Icon } from './Icon.js';
+import { requestAutoGpxSearch } from './GpxSearch.js';
 
 /** Formularzustand: Zahlen als Text, damit leere Felder leer bleiben dürfen. */
 interface RaceDraft {
@@ -142,6 +143,7 @@ export function EventForm(props: { eventId?: string }) {
   const [busy, setBusy] = useState(false);
   const [dateMissing, setDateMissing] = useState(false);
   const [importUrl, setImportUrl] = useState('');
+  const [imported, setImported] = useState(false);
   const [importState, setImportState] = useState<{ busy: boolean; message: string | null; warnings: string[] }>({
     busy: false,
     message: null,
@@ -167,6 +169,7 @@ export function EventForm(props: { eventId?: string }) {
         races: imported.races.length > 0 ? imported.races : d.races,
       }));
       setImportState({ busy: false, message: t.import.done, warnings: result.warnings });
+      setImported(true);
     } catch (e) {
       setImportState({ busy: false, message: e instanceof ApiError ? e.message : t.common.error, warnings: [] });
     }
@@ -185,6 +188,8 @@ export function EventForm(props: { eventId?: string }) {
       const input = fromDraft(draft);
       const saved = existing ? await api.updateEvent(existing.id, input) : await api.createEvent(groupId, input);
       putEvent(saved);
+      // Frisch importiert: Auf der Event-Seite gleich nach GPX-Dateien suchen.
+      if (imported && !existing && saved.website && saved.races.length > 0) requestAutoGpxSearch(saved.id);
       navigate(`event/${saved.id}`, true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t.common.error);

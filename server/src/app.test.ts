@@ -5,8 +5,9 @@
 import { PGlite } from '@electric-sql/pglite';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { settleUp, splitEqually, type EventComment, type EventInput, type GroupDetail, type ImportResult, type Me, type RunEvent, type Settlement } from '@runplanner/shared';
+import { settleUp, splitEqually, type EventComment, type EventInput, type GroupDetail, type ImportResult, type Me, type RunEvent, type Settlement, type GpxSearchResult, type TrackInput } from '@runplanner/shared';
 import { buildApp } from './app.js';
+import type { GpxFinder } from './gpxFinder.js';
 import type { Importer } from './importer.js';
 import { runDailyReminders, type PushMessage, type PushSender } from './push.js';
 import { createPgliteDb } from './testing.js';
@@ -35,12 +36,39 @@ const fakeImporter: Importer = {
   },
 };
 
+/** Zwei Strecken als Gerade nach Norden: 0,1° Breite sind gut 11 km. */
+function line(km: number): TrackInput {
+  const lat = 47 + km / 111.2;
+  return { name: null, points: [[47, 11, 500], [lat, 11, 900]], distanceKm: km, gainM: 400, lossM: 0, minEle: 500, maxEle: 900 };
+}
+
+let gpxSearches: string[];
+const fakeFinder: GpxFinder = {
+  async search(url) {
+    gpxSearches.push(url);
+    return {
+      files: [
+        { url: 'https://example.org/kurz.gpx', fileName: 'kurz.gpx', label: 'Kurz', track: line(22) },
+        { url: 'https://example.org/ultra.gpx', fileName: 'ultra.gpx', label: 'Ultra', track: line(69) },
+      ],
+      external: [{ url: 'https://www.komoot.com/tour/1', service: 'Komoot', label: 'Komoot' }],
+      pagesChecked: 3,
+    };
+  },
+  async download(url) {
+    if (url.endsWith('ultra.gpx')) return line(69);
+    if (url.endsWith('kurz.gpx')) return line(22);
+    throw new Error('404');
+  },
+};
+
 beforeEach(async () => {
+  gpxSearches = [];
   pg = await PGlite.create();
   importCalls = [];
   pushed = [];
   goneEndpoints = new Set();
-  app = await buildApp({ db: createPgliteDb(pg), tokenSecret: 'test-secret-test-secret', importer: fakeImporter, importsPerHour: 2, push: fakePush });
+  app = await buildApp({ db: createPgliteDb(pg), tokenSecret: 'test-secret-test-secret', importer: fakeImporter, importsPerHour: 2, push: fakePush, gpxFinder: fakeFinder });
 });
 
 afterEach(async () => {
@@ -525,5 +553,59 @@ describe('Kosten teilen', () => {
 
     const removed = await call<RunEvent>('DELETE', `/api/expenses/${expense.id}`, carla.token);
     expect(removed.body.expenses).toEqual([]);
+  });
+});
+
+describe('GPX-Suche', () => {
+  it('schlägt Dateien nach Distanz vor und übernimmt bestätigte', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const [ultra, kurz] = created.body.races;
+
+    const found = await call<GpxSearchResult>('POST', `/api/events/${created.body.id}/gpx-search`, anna.token);
+    expect(found.status).toBe(200);
+    expect(gpxSearches).toEqual(['https://example.org']);
+    expect(found.body.matchedBy).toBe('distance');
+    expect(found.body.candidates.map((c) => [c.fileName, c.raceId, c.distanceKm])).toEqual([
+      ['kurz.gpx', kurz!.id, 22],
+      ['ultra.gpx', ultra!.id, 69],
+    ]);
+    expect(found.body.external[0]!.service).toBe('Komoot');
+
+    const applied = await call<RunEvent>('POST', `/api/events/${created.body.id}/gpx-apply`, anna.token, {
+      items: [{ raceId: ultra!.id, url: 'https://example.org/ultra.gpx' }],
+    });
+    expect(applied.status).toBe(200);
+    expect(applied.body.races[0]!.track).toMatchObject({ distanceKm: 69, gainM: 400 });
+    expect(applied.body.races[1]!.track).toBeNull();
+
+    const broken = await call('POST', `/api/events/${created.body.id}/gpx-apply`, anna.token, {
+      items: [{ raceId: kurz!.id, url: 'https://example.org/weg.gpx' }],
+    });
+    expect(broken.status).toBe(422);
+    const foreign = await call('POST', `/api/events/${created.body.id}/gpx-apply`, anna.token, {
+      items: [{ raceId: 'fremd', url: 'https://example.org/ultra.gpx' }],
+    });
+    expect(foreign.status).toBe(400);
+    // Zähler: höchstens zwei Suchen pro Stunde in den Tests.
+    await call('POST', `/api/events/${created.body.id}/gpx-search`, anna.token);
+    expect((await call('POST', `/api/events/${created.body.id}/gpx-search`, anna.token)).status).toBe(429);
+  });
+
+  it('nutzt die KI-Zuordnung, wenn vorhanden', async () => {
+    await app.close();
+    app = await buildApp({
+      db: createPgliteDb(pg),
+      tokenSecret: 'test-secret-test-secret',
+      importer: { ...fakeImporter, matchTracks: async (races) => new Map(races.map((r, i) => [r.id, i === 0 ? 0 : null])) },
+      gpxFinder: fakeFinder,
+    });
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const found = await call<GpxSearchResult>('POST', `/api/events/${created.body.id}/gpx-search`, anna.token);
+    expect(found.body.matchedBy).toBe('ai');
+    expect(found.body.candidates.map((c) => c.raceId)).toEqual([created.body.races[0]!.id, null]);
   });
 });

@@ -23,6 +23,11 @@ eine normale App auf den Startbildschirm legen, ohne App Store.
 - **Import von der Website:** Link einfügen, Claude liest Strecken, Startzeiten,
   Höhenmeter und Gebühren aus und füllt das Formular vor. Gespeichert wird erst nach
   dem Prüfen.
+- **GPX-Suche:** Durchsucht die Website einer Veranstaltung (Startseite und bis zu sechs
+  Unterseiten) nach GPX-Dateien und ordnet sie den Strecken zu, mit Claude oder ohne
+  API-Schlüssel nach Distanz. Übernommen wird erst nach Bestätigung. Links zu Komoot,
+  Strava & Co. werden nur angezeigt.
+- **Kosten teilen:** Ausgaben pro Veranstaltung, „Wer schuldet wem“ im Tab Kosten.
 
 Rechte: Jedes Mitglied darf Veranstaltungen anlegen und bearbeiten. Löschen dürfen die
 Person, die sie angelegt hat, und Admins.
@@ -53,7 +58,9 @@ Server beim ersten Start und legt sie in der Datenbank ab. Erinnerungen prüft e
 ### Kosten des Imports
 
 Ein Import schickt den Text einer Seite an Claude (Modell `claude-opus-5-5`, niedriger
-Denkaufwand). Je nach Länge der Seite kostet das grob 2 bis 8 Cent. Mit
+Denkaufwand). Je nach Länge der Seite kostet das grob 2 bis 8 Cent.
+Die Zuordnung bei der GPX-Suche schickt nur Dateinamen und Kennzahlen und kostet
+weniger als einen Cent. Import und GPX-Suche zählen gemeinsam gegen das Stundenlimit. Mit
 `ANTHROPIC_MODEL` lässt sich ein anderes Modell einstellen.
 
 ## Lokal ausprobieren
