@@ -144,11 +144,15 @@ export const accommodationInputSchema = z.object({
   /** Freitext, z. B. "ca. 90 € pro Nacht". */
   price: optionalText(120),
   notes: optionalText(1000),
+  /** Nächte, für die der Vorschlag gedacht ist (Etappenorte); leer heißt alle. */
+  nights: z.array(isoDate).max(60).default([]),
 });
 export type AccommodationInput = z.input<typeof accommodationInputSchema>;
 
 export const stayInputSchema = z
   .object({
+    /** Nacht (Tag, vor dem sie liegt) oder `null` für eine Wahl für alle Nächte. */
+    night: isoDate.nullish(),
     choice: z.enum(STAY_CHOICES),
     accommodationId: z.string().nullish(),
     otherText: optionalText(300),
@@ -166,12 +170,20 @@ export interface Accommodation {
   url: string | null;
   price: string | null;
   notes: string | null;
+  /** Nächte, für die der Vorschlag gedacht ist; leer heißt alle. */
+  nights: string[];
   createdBy: string;
 }
 
+/**
+ * Eine Übernachtungswahl. Mit `night: null` gilt sie für alle Nächte; bei mehrtägigen
+ * Veranstaltungen kann eine Person stattdessen pro Nacht wählen (`night` = der Lauftag,
+ * vor dem die Nacht liegt). Beides zugleich gibt es nicht.
+ */
 export interface Stay {
   userId: string;
   userName: string;
+  night: string | null;
   choice: StayChoice;
   accommodationId: string | null;
   otherText: string | null;

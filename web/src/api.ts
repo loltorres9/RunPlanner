@@ -87,6 +87,8 @@ export const api = {
     request<RunEvent>('POST', `/api/events/${eventId}/accommodations`, input),
   updateAccommodation: (id: string, input: AccommodationInput) => request<RunEvent>('PUT', `/api/accommodations/${id}`, input),
   deleteAccommodation: (id: string) => request<RunEvent>('DELETE', `/api/accommodations/${id}`),
-  setStay: (eventId: string, input: StayInput | { choice: null }) => request<RunEvent>('PUT', `/api/events/${eventId}/stay`, input),
+  setStay: (eventId: string, input: StayInput | { night?: string | null; choice: null }) =>
+    request<RunEvent>('PUT', `/api/events/${eventId}/stay`, input),
+  setStayMode: (eventId: string, perNight: boolean) => request<RunEvent>('PUT', `/api/events/${eventId}/stay-mode`, { perNight }),
   importFromUrl: (url: string, language: Language) => request<ImportResult>('POST', '/api/import', { url, language }),
 };

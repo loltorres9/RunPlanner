@@ -808,3 +808,16 @@ button.link {
   gap: 6px;
 }
 .version { text-align: center; }
+.stay-picker {
+  gap: 6px;
+}
+.night-overview .night {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.night-overview .night:first-child {
+  border-top: none;
+}

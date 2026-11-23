@@ -1,5 +1,8 @@
 # Änderungen
 
+## 0.5.0 – 2026-11-23
+- Unterkunft pro Nacht: Bei mehrtägigen Veranstaltungen kann jede Person „Jede Nacht anders“ wählen (z. B. Etappenläufe). Vorschläge lassen sich einzelnen Nächten zuordnen, und eine Übersicht zeigt pro Nacht, wer wo schläft.
+
 ## 0.4.0 – 2026-11-23
 - Passwort vergessen: Ein Admin der Laufgruppe erzeugt beim Mitglied einen Einmal-Link (zwei Tage gültig) und schickt ihn selbst weiter. Mailversand gibt es bewusst noch nicht.
 

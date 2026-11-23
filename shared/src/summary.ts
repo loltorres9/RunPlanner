@@ -2,7 +2,7 @@
  * Auswertungen, die App und Tests gleichermaßen brauchen.
  */
 
-import type { ParticipationStatus, RunEvent } from './model.js';
+import type { ParticipationStatus, RunEvent, Stay } from './model.js';
 
 export interface PersonCost {
   userId: string;
@@ -83,17 +83,57 @@ export function eventPeople(event: RunEvent): { userId: string; userName: string
 }
 
 /**
- * Wer bei der Unterkunft noch etwas tun muss: Teilnehmende ohne Wahl, und alle, die
- * eine Unterkunft gewählt, aber noch nicht gebucht haben.
+ * Nächte einer mehrtägigen Veranstaltung, jeweils als der Tag, vor dem die Nacht liegt:
+ * eine Nacht vor jedem Veranstaltungstag. Eintägige Veranstaltungen haben keine einzelnen
+ * Nächte, dort gibt es nur die Wahl für alles.
  */
-export function openStays(event: RunEvent): { userId: string; userName: string; reason: 'undecided' | 'unbooked' }[] {
-  const open: { userId: string; userName: string; reason: 'undecided' | 'unbooked' }[] = [];
-  const byUser = new Map(event.stays.map((s) => [s.userId, s]));
-  for (const person of eventPeople(event)) {
-    if (!byUser.has(person.userId)) open.push({ ...person, reason: 'undecided' });
-  }
-  for (const stay of event.stays) {
-    if (stay.choice !== 'none' && !stay.booked) open.push({ userId: stay.userId, userName: stay.userName, reason: 'unbooked' });
+export function eventNights(event: Pick<RunEvent, 'startDate' | 'endDate'>): string[] {
+  if (event.endDate === null || event.endDate <= event.startDate) return [];
+  const nights: string[] = [];
+  for (let day = event.startDate; day <= event.endDate && nights.length < 60; day = addDays(day, 1)) nights.push(day);
+  return nights;
+}
+
+/** Wählt die Person pro Nacht? */
+export function staysPerNight(event: RunEvent, userId: string): boolean {
+  return event.stays.some((s) => s.userId === userId && s.night !== null);
+}
+
+/** Wo die Person in einer Nacht schläft: Wahl für diese Nacht oder für alle Nächte. */
+export function stayFor(event: RunEvent, userId: string, night: string | null): Stay | undefined {
+  return (
+    event.stays.find((s) => s.userId === userId && s.night === night) ??
+    event.stays.find((s) => s.userId === userId && s.night === null)
+  );
+}
+
+export interface OpenStay {
+  userId: string;
+  userName: string;
+  reason: 'undecided' | 'unbooked';
+  /** Betroffene Nacht, wenn die Person pro Nacht wählt. */
+  night: string | null;
+}
+
+/**
+ * Wer bei der Unterkunft noch etwas tun muss: Teilnehmende ohne Wahl, und alle, die
+ * eine Unterkunft gewählt, aber noch nicht gebucht haben. Wer pro Nacht wählt, wird
+ * für jede offene Nacht einzeln gezählt.
+ */
+export function openStays(event: RunEvent): OpenStay[] {
+  const open: OpenStay[] = [];
+  const nights = eventNights(event);
+  const people = new Map(eventPeople(event).map((p) => [p.userId, p.userName]));
+  for (const stay of event.stays) people.set(stay.userId, stay.userName);
+  for (const [userId, userName] of people) {
+    const perNight = nights.length > 0 && staysPerNight(event, userId);
+    for (const night of perNight ? nights : [null]) {
+      const stay = event.stays.find((s) => s.userId === userId && s.night === night);
+      if (stay === undefined) open.push({ userId, userName, reason: 'undecided', night });
+      else if (stay.choice !== 'none' && !stay.booked) {
+        open.push({ userId, userName, reason: 'unbooked', night });
+      }
+    }
   }
   return open;
 }

@@ -254,7 +254,7 @@ describe('Unterkünfte', () => {
       booked: true,
     });
     expect(annaStay.body.stays).toEqual([
-      { userId: anna.me.user.id, userName: 'Anna', choice: 'suggested', accommodationId: hotel.id, otherText: null, booked: true },
+      { userId: anna.me.user.id, userName: 'Anna', night: null, choice: 'suggested', accommodationId: hotel.id, otherText: null, booked: true },
     ]);
     const benStay = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, ben.token, { choice: 'other', otherText: 'Bei Oma' });
     expect(benStay.body.stays.find((s) => s.userId === ben.me.user.id)).toMatchObject({ choice: 'other', otherText: 'Bei Oma', booked: false });
@@ -269,6 +269,31 @@ describe('Unterkünfte', () => {
 
     const reset = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, ben.token, { choice: null });
     expect(reset.body.stays).toHaveLength(0);
+
+    // Pro Nacht: sampleEvent geht vom 1. bis 2. Mai, also zwei Nächte.
+    const hut = (
+      await call<RunEvent>('POST', `/api/events/${eventId}/accommodations`, anna.token, { name: 'Hütte', nights: ['2027-05-02'] })
+    ).body.accommodations[0]!;
+    expect(hut.nights).toEqual(['2027-05-02']);
+    await call('PUT', `/api/events/${eventId}/stay`, anna.token, { choice: 'other', otherText: 'Zelt', booked: true });
+    const split = await call<RunEvent>('PUT', `/api/events/${eventId}/stay-mode`, anna.token, { perNight: true });
+    expect(split.body.stays.map((s) => [s.night, s.otherText])).toEqual([
+      ['2027-05-01', 'Zelt'],
+      ['2027-05-02', 'Zelt'],
+    ]);
+    const night2 = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, anna.token, {
+      night: '2027-05-02',
+      choice: 'suggested',
+      accommodationId: hut.id,
+    });
+    expect(night2.body.stays.find((s) => s.night === '2027-05-02')).toMatchObject({ accommodationId: hut.id, booked: false });
+    expect((await call('PUT', `/api/events/${eventId}/stay`, anna.token, { night: '2027-06-01', choice: 'none' })).status).toBe(400);
+    // Wahl für alles ersetzt die einzelnen Nächte.
+    const whole = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, anna.token, { choice: 'none' });
+    expect(whole.body.stays.map((s) => s.night)).toEqual([null]);
+    await call('PUT', `/api/events/${eventId}/stay-mode`, anna.token, { perNight: true });
+    const back = await call<RunEvent>('PUT', `/api/events/${eventId}/stay-mode`, anna.token, { perNight: false });
+    expect(back.body.stays).toHaveLength(0);
 
     // Fremde sehen nichts.
     const fremd = await register('fremd@x.de', 'Fremd');

@@ -10,6 +10,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import {
   accommodationInputSchema,
   eventInputSchema,
+  eventNights,
   stayInputSchema,
   type Accommodation,
   type Stay,
@@ -84,6 +85,7 @@ const passwordSchema = z.object({
   newPassword: z.string().min(8).max(200),
 });
 
+const stayModeSchema = z.object({ perNight: z.boolean() });
 const resetSchema = z.object({ password: z.string().min(8).max(200) });
 /** Reset-Links gelten zwei Tage. */
 const RESET_TTL_MS = 2 * 24 * 60 * 60 * 1000;
@@ -95,6 +97,11 @@ const rangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
+
+/** Nächte eines Vorschlags, sortiert und ohne Doppelte, als Text für die Datenbank. */
+function joinNights(nights: string[]): string {
+  return [...new Set(nights)].sort().join(',');
+}
 
 function parse<T extends z.ZodType>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value ?? {});
@@ -294,25 +301,39 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       url: string | null;
       price: string | null;
       notes: string | null;
+      nights: string;
       created_by: string;
     }>('select * from accommodations where event_id = any($1::text[]) order by created_at', [ids]);
     const stays = await db.query<{
       event_id: string;
       user_id: string;
       user_name: string;
+      night: string | null;
       choice: Stay['choice'];
       accommodation_id: string | null;
       other_text: string | null;
       booked: boolean;
     }>(
-      `select s.*, u.name as user_name from stays s join users u on u.id = s.user_id
-       where s.event_id = any($1::text[]) order by u.name`,
+      `select s.event_id, s.user_id, null as night, s.choice, s.accommodation_id, s.other_text, s.booked,
+         u.name as user_name from stays s join users u on u.id = s.user_id where s.event_id = any($1::text[])
+       union all
+       select n.event_id, n.user_id, n.night, n.choice, n.accommodation_id, n.other_text, n.booked,
+         u.name as user_name from night_stays n join users u on u.id = n.user_id where n.event_id = any($1::text[])
+       order by user_name, night nulls first`,
       [ids],
     );
     const accommodationsByEvent = new Map<string, Accommodation[]>();
     for (const a of accommodations.rows) {
       const list = accommodationsByEvent.get(a.event_id) ?? [];
-      list.push({ id: a.id, name: a.name, url: a.url, price: a.price, notes: a.notes, createdBy: a.created_by });
+      list.push({
+        id: a.id,
+        name: a.name,
+        url: a.url,
+        price: a.price,
+        notes: a.notes,
+        nights: a.nights ? a.nights.split(',') : [],
+        createdBy: a.created_by,
+      });
       accommodationsByEvent.set(a.event_id, list);
     }
     const staysByEvent = new Map<string, Stay[]>();
@@ -321,6 +342,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       list.push({
         userId: s.user_id,
         userName: s.user_name,
+        night: s.night,
         choice: s.choice,
         accommodationId: s.accommodation_id,
         otherText: s.other_text,
@@ -804,9 +826,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const event = await loadEvent(request.params.id, userId);
     const input = parse(accommodationInputSchema, request.body);
     await db.query(
-      `insert into accommodations (id, event_id, name, url, price, notes, created_by, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [newId(), event.id, input.name, input.url, input.price, input.notes, userId, now()],
+      `insert into accommodations (id, event_id, name, url, price, notes, nights, created_by, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [newId(), event.id, input.name, input.url, input.price, input.notes, joinNights(input.nights), userId, now()],
     );
     reply.code(201);
     return loadEvent(event.id, userId);
@@ -816,11 +838,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const userId = await requireUser(request);
     const eventId = await accommodationEvent(request.params.id, userId);
     const input = parse(accommodationInputSchema, request.body);
-    await db.query('update accommodations set name = $1, url = $2, price = $3, notes = $4 where id = $5', [
+    await db.query('update accommodations set name = $1, url = $2, price = $3, notes = $4, nights = $5 where id = $6', [
       input.name,
       input.url,
       input.price,
       input.notes,
+      joinNights(input.nights),
       request.params.id,
     ]);
     return loadEvent(eventId, userId);
@@ -833,12 +856,24 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return loadEvent(eventId, userId);
   });
 
-  /** Eigene Unterkunft setzen; `null` nimmt die Wahl zurück. */
+  /**
+   * Eigene Unterkunft setzen, für alle Nächte (`night` leer) oder eine einzelne Nacht.
+   * `choice: null` nimmt die Wahl zurück. Beide Arten schließen sich aus: Wer eine
+   * Nacht setzt, verliert die Wahl für alle Nächte, und umgekehrt.
+   */
   app.put<{ Params: { id: string } }>('/api/events/:id/stay', async (request) => {
     const userId = await requireUser(request);
     const event = await loadEvent(request.params.id, userId);
-    if (request.body === null || (request.body as { choice?: unknown }).choice === null) {
-      await db.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
+    const body = (request.body ?? {}) as { choice?: unknown; night?: unknown };
+    const night = typeof body.night === 'string' ? body.night : null;
+    if (night !== null && !eventNights(event).includes(night)) {
+      throw new HttpError(400, 'invalid_input', 'Diese Nacht gehört nicht zur Veranstaltung');
+    }
+    if (body.choice === null || body.choice === undefined) {
+      if (night === null) await db.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
+      else {
+        await db.query('delete from night_stays where event_id = $1 and user_id = $2 and night = $3', [event.id, userId, night]);
+      }
       return loadEvent(event.id, userId);
     }
     const input = parse(stayInputSchema, request.body);
@@ -846,22 +881,70 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (accommodationId !== null && !event.accommodations.some((a) => a.id === accommodationId)) {
       throw new HttpError(400, 'invalid_input', 'Diese Unterkunft gehört nicht zur Veranstaltung');
     }
-    await db.query(
-      `insert into stays (event_id, user_id, choice, accommodation_id, other_text, booked, updated_at)
-       values ($1,$2,$3,$4,$5,$6,$7)
-       on conflict (event_id, user_id) do update set choice = excluded.choice,
-         accommodation_id = excluded.accommodation_id, other_text = excluded.other_text,
-         booked = excluded.booked, updated_at = excluded.updated_at`,
-      [
-        event.id,
-        userId,
-        input.choice,
-        accommodationId,
-        input.choice === 'other' ? input.otherText : null,
-        input.choice === 'none' ? false : input.booked,
-        now(),
-      ],
-    );
+    const values = [
+      input.choice,
+      accommodationId,
+      input.choice === 'other' ? input.otherText : null,
+      input.choice === 'none' ? false : input.booked,
+      now(),
+    ];
+    await db.transaction(async (tx) => {
+      if (night === null) {
+        await tx.query('delete from night_stays where event_id = $1 and user_id = $2', [event.id, userId]);
+        await tx.query(
+          `insert into stays (event_id, user_id, choice, accommodation_id, other_text, booked, updated_at)
+           values ($1,$2,$3,$4,$5,$6,$7)
+           on conflict (event_id, user_id) do update set choice = excluded.choice,
+             accommodation_id = excluded.accommodation_id, other_text = excluded.other_text,
+             booked = excluded.booked, updated_at = excluded.updated_at`,
+          [event.id, userId, ...values],
+        );
+      } else {
+        await tx.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
+        await tx.query(
+          `insert into night_stays (event_id, user_id, night, choice, accommodation_id, other_text, booked, updated_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8)
+           on conflict (event_id, user_id, night) do update set choice = excluded.choice,
+             accommodation_id = excluded.accommodation_id, other_text = excluded.other_text,
+             booked = excluded.booked, updated_at = excluded.updated_at`,
+          [event.id, userId, night, ...values],
+        );
+      }
+    });
+    return loadEvent(event.id, userId);
+  });
+
+  /**
+   * Zwischen „eine Unterkunft für alles“ und „jede Nacht anders“ wechseln. Beim Wechsel
+   * auf pro Nacht wird die bisherige Wahl in jede Nacht übernommen; zurück werden die
+   * einzelnen Nächte verworfen.
+   */
+  app.put<{ Params: { id: string } }>('/api/events/:id/stay-mode', async (request) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    const input = parse(stayModeSchema, request.body);
+    await db.transaction(async (tx) => {
+      if (!input.perNight) {
+        await tx.query('delete from night_stays where event_id = $1 and user_id = $2', [event.id, userId]);
+        return;
+      }
+      const nights = eventNights(event);
+      if (nights.length === 0) throw new HttpError(400, 'invalid_input', 'Nur bei mehrtägigen Veranstaltungen möglich');
+      const found = await tx.query<{ choice: string; accommodation_id: string | null; other_text: string | null; booked: boolean }>(
+        'select choice, accommodation_id, other_text, booked from stays where event_id = $1 and user_id = $2',
+        [event.id, userId],
+      );
+      const current = found.rows[0];
+      if (current === undefined) return;
+      for (const night of nights) {
+        await tx.query(
+          `insert into night_stays (event_id, user_id, night, choice, accommodation_id, other_text, booked, updated_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (event_id, user_id, night) do nothing`,
+          [event.id, userId, night, current.choice, current.accommodation_id, current.other_text, current.booked, now()],
+        );
+      }
+      await tx.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
+    });
     return loadEvent(event.id, userId);
   });
 
