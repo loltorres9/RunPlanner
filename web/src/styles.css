@@ -18,8 +18,10 @@
   color-scheme: light;
 }
 
+/* Dunkles Farbschema: nach Systemvorgabe, außer in den Einstellungen ist „Hell“
+   gewählt, oder fest, wenn „Dunkel“ gewählt ist (data-theme am <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #121614;
     --surface: #1b211e;
     --surface-2: #252c28;
@@ -37,6 +39,24 @@
     --shadow: none;
     color-scheme: dark;
   }
+}
+:root[data-theme='dark'] {
+  --bg: #121614;
+  --surface: #1b211e;
+  --surface-2: #252c28;
+  --text: #e6ebe7;
+  --muted: #98a39c;
+  --border: #313a35;
+  --accent: #4fb386;
+  --accent-strong: #66c79b;
+  --accent-text: #0d1f16;
+  --warn: #f0b14a;
+  --warn-bg: #3a2e14;
+  --danger: #f08178;
+  --danger-bg: #3d1d1a;
+  --ok-bg: #1d3328;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 * {
