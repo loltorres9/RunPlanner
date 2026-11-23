@@ -8,11 +8,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EventInput, GroupDetail, ImportResult, Me, RunEvent } from '@runplanner/shared';
 import { buildApp } from './app.js';
 import type { Importer } from './importer.js';
+import { runDailyReminders, type PushMessage, type PushSender } from './push.js';
 import { createPgliteDb } from './testing.js';
 
 let app: FastifyInstance;
 let pg: PGlite;
 let importCalls: string[];
+let pushed: { endpoint: string; message: PushMessage }[];
+let goneEndpoints: Set<string>;
+
+const fakePush: PushSender = {
+  publicKey: 'test-key',
+  async send(subscription, message) {
+    if (goneEndpoints.has(subscription.endpoint)) throw Object.assign(new Error('gone'), { statusCode: 410 });
+    pushed.push({ endpoint: subscription.endpoint, message });
+  },
+};
 
 const fakeImporter: Importer = {
   async importFromUrl(url: string): Promise<ImportResult> {
@@ -27,7 +38,9 @@ const fakeImporter: Importer = {
 beforeEach(async () => {
   pg = await PGlite.create();
   importCalls = [];
-  app = await buildApp({ db: createPgliteDb(pg), tokenSecret: 'test-secret-test-secret', importer: fakeImporter, importsPerHour: 2 });
+  pushed = [];
+  goneEndpoints = new Set();
+  app = await buildApp({ db: createPgliteDb(pg), tokenSecret: 'test-secret-test-secret', importer: fakeImporter, importsPerHour: 2, push: fakePush });
 });
 
 afterEach(async () => {
@@ -310,5 +323,54 @@ describe('Import', () => {
     expect(first.body.draft.races).toHaveLength(1);
     await call('POST', '/api/import', token, { url: 'https://a.example' });
     expect((await call('POST', '/api/import', token, { url: 'https://b.example' })).status).toBe(429);
+  });
+});
+
+describe('Push-Benachrichtigungen', () => {
+  const sub = (name: string) => ({ endpoint: `https://push.example/${name}`, keys: { p256dh: 'p', auth: 'a' } });
+
+  it('meldet neue Veranstaltungen und erinnert einmal an Fristen und Start', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    expect((await call('POST', '/api/push/subscribe', ben.token, sub('ben'))).status).toBe(204);
+    expect((await call('POST', '/api/push/subscribe', anna.token, sub('anna'))).status).toBe(204);
+    expect((await call('POST', '/api/push/subscribe', anna.token, { endpoint: 'http://x', keys: { p256dh: 'p', auth: 'a' } })).status).toBe(400);
+
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]).toMatchObject({ endpoint: 'https://push.example/ben', message: { title: 'Neue Veranstaltung', url: `/#/event/${created.body.id}` } });
+    expect(pushed[0]!.message.body).toContain('Anna hat „Chiemgau Trail“ eingetragen');
+
+    // Ben hat nur Interesse am Ultra, Anna ist angemeldet. Anmeldeschluss 1.4., Start 1.5.
+    const [ultra] = created.body.races;
+    await call('PUT', `/api/races/${ultra!.id}/participation`, ben.token, { status: 'interested' });
+    await call('PUT', `/api/races/${ultra!.id}/participation`, anna.token, { status: 'registered' });
+    const me = await call<Me>('PATCH', '/api/me', anna.token, { notifications: { eventDays: 3, newEvent: false } });
+    expect(me.body.notifications).toEqual({ newEvent: false, deadlineDays: 7, eventDays: 3 });
+    expect((await call('PATCH', '/api/me', anna.token, { notifications: { eventDays: 5 } })).status).toBe(400);
+
+    const db = createPgliteDb(pg);
+    pushed = [];
+    expect(await runDailyReminders(db, fakePush, '2027-03-20')).toBe(0);
+    expect(await runDailyReminders(db, fakePush, '2027-03-26')).toBe(1);
+    expect(pushed[0]).toMatchObject({ endpoint: 'https://push.example/ben', message: { title: 'Anmeldeschluss naht' } });
+    // Am nächsten Tag nicht noch einmal.
+    expect(await runDailyReminders(db, fakePush, '2027-03-27')).toBe(0);
+
+    // Start: Anna (3 Tage) und Ben (Standard 7 Tage, auch mit nur Interesse).
+    pushed = [];
+    expect(await runDailyReminders(db, fakePush, '2027-04-24')).toBe(1);
+    expect(pushed.map((p) => p.endpoint)).toEqual(['https://push.example/ben']);
+    expect(await runDailyReminders(db, fakePush, '2027-04-30')).toBe(1);
+    expect(pushed[1]).toMatchObject({ endpoint: 'https://push.example/anna', message: { body: '„Chiemgau Trail“ beginnt morgen.' } });
+
+    // Ein totes Abonnement wird beim nächsten Versand entfernt.
+    goneEndpoints.add('https://push.example/ben');
+    await call('POST', `/api/groups/${group.body.id}/events`, anna.token, { ...sampleEvent, name: 'Zweites' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const left = await pg.query<{ endpoint: string }>('select endpoint from push_subscriptions');
+    expect(left.rows.map((r) => r.endpoint)).toEqual(['https://push.example/anna']);
   });
 });

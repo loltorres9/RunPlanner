@@ -1,6 +1,6 @@
 {
   "name": "@runplanner/server",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -15,10 +15,12 @@
     "@runplanner/shared": "*",
     "fastify": "^5.2.0",
     "pg": "^8.13.1",
+    "web-push": "^3.6.7",
     "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "@types/pg": "^8.11.10"
+    "@types/pg": "^8.11.10",
+    "@types/web-push": "^3.6.4"
   }
 }

@@ -14,6 +14,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-11-23',
+    de: [
+      "Push-Benachrichtigungen: bei neuen Veranstaltungen, vor dem Anmeldeschluss (wenn du nur Interesse hast) und vor einer Veranstaltung, bei der du eingetragen bist. Vorlauf in den Einstellungen wählbar.",
+      "Auf dem iPhone funktionieren Benachrichtigungen nur, wenn RunPlanner auf dem Home-Bildschirm installiert ist.",
+      "Nach einem Update erscheint oben ein Hinweis mit Link zu den Neuigkeiten.",
+    ],
+    en: [
+      "Push notifications: for new events, before the registration deadline (if you are only interested) and before an event you are signed up for. Lead time can be set in Settings.",
+      "On iPhone, notifications only work when RunPlanner is installed on the home screen.",
+      "After an update, a banner at the top links to What's new.",
+    ],
+  },
+  {
     version: '0.8.0',
     date: '2026-11-23',
     de: [

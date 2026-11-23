@@ -3,6 +3,7 @@ import type { Language, Me, RunEvent } from '@runplanner/shared';
 import { api, getToken, setToken, setUnauthorizedHandler } from './api.js';
 import { detectLanguage, I18nContext, makeI18n } from './i18n/index.js';
 import { AppContext, navigate, storedGroupId, storeGroupId, useRoute, type AppState } from './state.js';
+import { refreshPushSubscription } from './push.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { ChangelogScreen } from './ui/ChangelogScreen.js';
 import { CalendarScreen } from './ui/CalendarScreen.js';
@@ -142,6 +143,8 @@ function SignedIn(props: { me: Me; setMe: (me: Me) => void; logout: () => void; 
 
   useEffect(() => {
     api.config().then((c) => setImportEnabled(c.importEnabled)).catch(() => {});
+    // Ein vorhandenes Push-Abonnement gehört der Person, die jetzt angemeldet ist.
+    void refreshPushSubscription();
   }, []);
 
   if (groupId === null || inviteCode !== null) {

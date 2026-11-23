@@ -155,6 +155,29 @@ create table if not exists night_stays (
   updated_at bigint not null,
   primary key (event_id, user_id, night)
 );
+
+-- Push-Benachrichtigungen: ein Abonnement pro Gerät.
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id text not null references users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  created_at bigint not null,
+  last_success_at bigint,
+  last_error text
+);
+
+-- Schon verschickte Erinnerungen, damit jede nur einmal kommt.
+create table if not exists push_sent (
+  user_id text not null references users(id) on delete cascade,
+  key text not null,
+  sent_at bigint not null,
+  primary key (user_id, key)
+);
+
+alter table users add column if not exists notify_new_event boolean not null default true;
+alter table users add column if not exists notify_deadline_days integer not null default 7;
+alter table users add column if not exists notify_event_days integer not null default 7;
 `;
 
 export async function migrate(db: Db): Promise<void> {

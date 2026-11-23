@@ -5,12 +5,14 @@ import { CHANGELOG } from '../changelog.js';
 import { useI18n } from '../i18n/index.js';
 import { APP_VERSION } from '../version.js';
 import { Icon } from './Icon.js';
+import { markVersionSeen } from './UpdateBanner.js';
 
 export function ChangelogScreen() {
   const { t, f, date, lang } = useI18n();
   // Die Einstellungen sind meist nach unten gescrollt; die Neuigkeiten beginnen oben.
   useEffect(() => {
     window.scrollTo(0, 0);
+    markVersionSeen();
   }, []);
   return (
     <div className="stack changelog">
