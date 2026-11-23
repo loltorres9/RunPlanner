@@ -203,6 +203,8 @@ export const de = {
     toLogin: 'Zur Anmeldung',
   },
   settings: {
+    theme: 'Darstellung',
+    themes: { system: 'Wie Gerät', light: 'Hell', dark: 'Dunkel' },
     version: 'Version {version}',
     title: 'Einstellungen',
     profile: 'Profil',

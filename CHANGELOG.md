@@ -1,5 +1,8 @@
 # Änderungen
 
+## 0.7.0 – 2026-11-23
+- Einstellungen: Darstellung „Wie Gerät | Hell | Dunkel“, pro Gerät gespeichert.
+
 ## 0.6.0 – 2026-11-23
 - Terminliste: Umschalter „Nach Datum | Neu hinzugefügt“. Neu hinzugefügt zeigt die neuesten Einträge zuerst, mit wem und wann.
 - Abzeichen „Neu“ für Veranstaltungen, die andere seit dem letzten Blick in die Liste angelegt haben (pro Gerät).

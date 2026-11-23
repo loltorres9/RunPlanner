@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/index.js';
 import { useApp } from '../state.js';
 import { APP_BUILT, APP_COMMIT, APP_VERSION } from '../version.js';
 import { LanguageSwitch } from './LanguageSwitch.js';
+import { applyTheme, storedTheme, type Theme } from '../theme.js';
 
 export function SettingsScreen() {
   const { t, f, date } = useI18n();
@@ -13,6 +14,7 @@ export function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [theme, setTheme] = useState<Theme>(storedTheme);
 
   async function run(action: () => Promise<void>, success: string) {
     setError(null);
@@ -58,6 +60,26 @@ export function SettingsScreen() {
       <section className="card stack">
         <h2>{t.settings.language}</h2>
         <LanguageSwitch value={me.user.language} onChange={(language) => void run(async () => setMe(await api.updateMe({ language })), '')} />
+      </section>
+
+      <section className="card stack">
+        <h2>{t.settings.theme}</h2>
+        <div className="segmented" role="group" aria-label={t.settings.theme}>
+          {(['system', 'light', 'dark'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={theme === value ? 'active' : ''}
+              aria-pressed={theme === value}
+              onClick={() => {
+                setTheme(value);
+                applyTheme(value);
+              }}
+            >
+              {t.settings.themes[value]}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="card stack">
