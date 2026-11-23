@@ -70,6 +70,18 @@ export const eventInputSchema = z
   .refine((event) => !event.endDate || event.endDate >= event.startDate, {
     message: 'Enddatum liegt vor dem Startdatum',
     path: ['endDate'],
+  })
+  .superRefine((event, ctx) => {
+    const last = event.endDate ?? event.startDate;
+    event.races.forEach((race, index) => {
+      if (race.startDate && (race.startDate < event.startDate || race.startDate > last)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Starttag der Strecke liegt außerhalb der Veranstaltung',
+          path: ['races', index, 'startDate'],
+        });
+      }
+    });
   });
 export type EventInput = z.input<typeof eventInputSchema>;
 export type EventInputParsed = z.output<typeof eventInputSchema>;

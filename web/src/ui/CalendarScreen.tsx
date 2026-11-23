@@ -1,29 +1,9 @@
 import { coversDay, lastDay } from '@runplanner/shared';
+import { monthGrid, shiftMonth } from '../dates.js';
 import { useI18n } from '../i18n/index.js';
 import { navigate, todayIso, useApp } from '../state.js';
 import { EventCard, eventColor } from './EventCard.js';
 import { Icon } from './Icon.js';
-
-function shiftMonth(month: string, delta: number): string {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const date = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return date.toISOString().slice(0, 7);
-}
-
-/** Tage der Monatsansicht, Montag zuerst, inkl. Randtage der Nachbarmonate. */
-function monthGrid(month: string): string[] {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const first = new Date(Date.UTC(y, m - 1, 1));
-  const offset = (first.getUTCDay() + 6) % 7;
-  const start = new Date(Date.UTC(y, m - 1, 1 - offset));
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const cells = Math.ceil((offset + daysInMonth) / 7) * 7;
-  return Array.from({ length: cells }, (_, i) => {
-    const d = new Date(start);
-    d.setUTCDate(start.getUTCDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
 
 export function CalendarScreen(props: { month?: string }) {
   const { t, date } = useI18n();

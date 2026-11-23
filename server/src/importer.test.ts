@@ -61,4 +61,19 @@ describe('toDraft', () => {
     expect(draft.races?.[0]).toMatchObject({ elevationUpM: 3800, elevationDownM: null, startTime: null, fee: 95 });
     expect(warnings).toEqual(['Gebühren vom Vorjahr']);
   });
+
+  it('behält Starttage nur innerhalb einer mehrtägigen Veranstaltung', () => {
+    const race = (startDate: string) => ({
+      name: 'R', distanceKm: null, elevationUpM: null, elevationDownM: null, startDate, startTime: null, fee: null, feeNote: null, cutoff: null,
+    });
+    const { draft } = toDraft(
+      {
+        name: 'X', location: null, startDate: '2027-06-25', endDate: '2027-06-27', registrationDeadline: null, currency: null, multiDay: true,
+        races: [race('2027-06-26'), race('2027-06-29')],
+        warnings: [],
+      },
+      'https://example.org',
+    );
+    expect(draft.races?.map((r) => r.startDate)).toEqual(['2027-06-26', null]);
+  });
 });
