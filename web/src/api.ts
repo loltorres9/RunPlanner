@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { GpxApplyInput, GpxSearchResult, ExpenseInput, Settlement, SettlementInput, RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { GpxApplyInput, GpxSearchResult, ExpenseInput, Settlement, SettlementInput, RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent, TeamInput } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -85,8 +85,10 @@ export const api = {
   createEvent: (groupId: string, input: EventInput) => request<RunEvent>('POST', `/api/groups/${groupId}/events`, input),
   updateEvent: (id: string, input: EventInput) => request<RunEvent>('PUT', `/api/events/${id}`, input),
   deleteEvent: (id: string) => request<void>('DELETE', `/api/events/${id}`),
-  setParticipation: (raceId: string, status: ParticipationStatus | null) =>
-    request<RunEvent>('PUT', `/api/races/${raceId}/participation`, { status }),
+  /** `teamId`: bei Teamstrecken einem Team beitreten oder mit "new" eins gründen. */
+  setParticipation: (raceId: string, status: ParticipationStatus | null, teamId?: string) =>
+    request<RunEvent>('PUT', `/api/races/${raceId}/participation`, { status, teamId }),
+  updateTeam: (teamId: string, input: TeamInput) => request<RunEvent>('PUT', `/api/teams/${teamId}`, input),
   addAccommodation: (eventId: string, input: AccommodationInput) =>
     request<RunEvent>('POST', `/api/events/${eventId}/accommodations`, input),
   updateAccommodation: (id: string, input: AccommodationInput) => request<RunEvent>('PUT', `/api/accommodations/${id}`, input),

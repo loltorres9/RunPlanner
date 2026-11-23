@@ -44,6 +44,8 @@ export const raceInputSchema = z.object({
   feeNote: optionalText(300),
   /** Zielschluss oder Zeitlimit als Text, z. B. "8 h" oder "Zielschluss 18:00". */
   cutoff: optionalText(120),
+  /** Teamstrecke: so viele Personen laufen als ein Team, die Gebühr gilt pro Team. */
+  teamSize: z.number().int().min(2).max(20).nullish(),
 });
 export type RaceInput = z.input<typeof raceInputSchema>;
 
@@ -90,7 +92,35 @@ export interface Participation {
   userId: string;
   userName: string;
   status: ParticipationStatus;
+  /** Team bei Teamstrecken, sonst `null`. */
+  teamId: string | null;
 }
+
+/**
+ * Ein Team auf einer Teamstrecke. Eine Person zahlt die Gebühr fürs ganze Team;
+ * setzt sie „Bezahlt“, gilt das Team als bezahlt.
+ */
+export interface RaceTeam {
+  id: string;
+  name: string;
+  payerId: string;
+  payerName: string;
+  /** Automatisch angelegte Ausgabe für die Gebühr, falls noch vorhanden. */
+  expenseId: string | null;
+}
+
+export const participationInputSchema = z.object({
+  status: z.enum(PARTICIPATION_STATUSES).nullable(),
+  /** Nur bei Teamstrecken: einem Team beitreten oder mit "new" ein neues gründen. */
+  teamId: z.string().min(1).max(100).nullish(),
+});
+export type ParticipationInput = z.input<typeof participationInputSchema>;
+
+export const teamInputSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  payerId: z.string().min(1).optional(),
+});
+export type TeamInput = z.input<typeof teamInputSchema>;
 
 export interface Race {
   id: string;
@@ -103,7 +133,11 @@ export interface Race {
   fee: number | null;
   feeNote: string | null;
   cutoff: string | null;
+  /** Teamgröße bei Teamstrecken, sonst `null`. */
+  teamSize: number | null;
   participants: Participation[];
+  /** Teams (nur bei Teamstrecken). */
+  teams: RaceTeam[];
   /** Hochgeladener Streckenverlauf (nur Kennzahlen; die Punkte gibt es einzeln). */
   track: TrackSummary | null;
 }

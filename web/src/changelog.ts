@@ -14,6 +14,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.15.0',
+    date: '2026-11-23',
+    de: [
+      'Teamstrecken: Im Strecken-Formular „Teamstrecke“ mit Teamgröße ankreuzen, die Gebühr gilt dann pro Team.',
+      'Wer sich einträgt, gründet ein Team oder tritt einem bei, z. B. „Team Pascal (2/3)“. Mehrere Teams pro Strecke sind möglich.',
+      'Eine Person zahlt fürs Team. Setzt sie „Bezahlt“, ist das ganze Team bezahlt, und die Gebühr erscheint als Ausgabe, gleich aufs Team aufgeteilt (löschbar).',
+      'In der Kostenübersicht zählt die Teamgebühr nur einmal, bei der Person, die zahlt.',
+    ],
+    en: [
+      'Team races: tick “Team race” with a team size in the race form, and the fee applies per team.',
+      'Signing up starts a team or joins one, e.g. “Team Pascal (2/3)”. A race can have several teams.',
+      'One person pays for the team. When they set “Paid”, the whole team is paid and the fee shows up as an expense, split equally across the team (can be deleted).',
+      'In the cost overview, the team fee counts only once, for the person paying.',
+    ],
+  },
+  {
     version: '0.14.0',
     date: '2026-11-23',
     de: [

@@ -28,7 +28,11 @@ import {
   type Stay,
   GROUP_ROLES,
   LANGUAGES,
-  PARTICIPATION_STATUSES,
+  participationInputSchema,
+  teamInputSchema,
+  splitEqually,
+  type ParticipationStatus,
+  type RaceTeam,
   type EventInputParsed,
   type GroupDetail,
   type GroupRole,
@@ -115,7 +119,6 @@ const resetSchema = z.object({ password: z.string().min(8).max(200) });
 const RESET_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const groupSchema = z.object({ name: z.string().trim().min(1).max(80) });
 const roleSchema = z.object({ role: z.enum(GROUP_ROLES) });
-const participationSchema = z.object({ status: z.enum(PARTICIPATION_STATUSES).nullable() });
 const importSchema = z.object({ url: z.string().trim().min(4).max(2000), language: z.enum(LANGUAGES).optional() });
 const rangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -181,6 +184,7 @@ interface RaceRow {
   fee: number | null;
   fee_note: string | null;
   cutoff: string | null;
+  team_size: number | null;
 }
 
 interface ParticipationRow {
@@ -188,6 +192,7 @@ interface ParticipationRow {
   user_id: string;
   user_name: string;
   status: Race['participants'][number]['status'];
+  team_id: string | null;
 }
 
 declare module 'fastify' {
@@ -319,7 +324,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       raceIds.length === 0
         ? { rows: [] as ParticipationRow[] }
         : await db.query<ParticipationRow>(
-            `select p.race_id, p.user_id, u.name as user_name, p.status from participations p
+            `select p.race_id, p.user_id, u.name as user_name, p.status, p.team_id from participations p
              join users u on u.id = p.user_id where p.race_id = any($1::text[]) order by u.name`,
             [raceIds],
           );
@@ -327,8 +332,22 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const byRace = new Map<string, Race['participants']>();
     for (const p of participations.rows) {
       const list = byRace.get(p.race_id) ?? [];
-      list.push({ userId: p.user_id, userName: p.user_name, status: p.status });
+      list.push({ userId: p.user_id, userName: p.user_name, status: p.status, teamId: p.team_id });
       byRace.set(p.race_id, list);
+    }
+    const teams =
+      raceIds.length === 0
+        ? { rows: [] }
+        : await db.query<{ id: string; race_id: string; name: string; payer_id: string; payer_name: string; expense_id: string | null }>(
+            `select t.id, t.race_id, t.name, t.payer_id, u.name as payer_name, t.expense_id from race_teams t
+             join users u on u.id = t.payer_id where t.race_id = any($1::text[]) order by t.created_at, t.id`,
+            [raceIds],
+          );
+    const teamsByRace = new Map<string, RaceTeam[]>();
+    for (const t of teams.rows) {
+      const list = teamsByRace.get(t.race_id) ?? [];
+      list.push({ id: t.id, name: t.name, payerId: t.payer_id, payerName: t.payer_name, expenseId: t.expense_id });
+      teamsByRace.set(t.race_id, list);
     }
     const accommodations = await db.query<{
       id: string;
@@ -433,7 +452,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         fee: r.fee,
         feeNote: r.fee_note,
         cutoff: r.cutoff,
+        teamSize: r.team_size,
         participants: byRace.get(r.id) ?? [],
+        teams: r.team_size === null ? [] : (teamsByRace.get(r.id) ?? []),
         track: trackByRace.get(r.id) ?? null,
       });
       byEvent.set(r.event_id, list);
@@ -489,19 +510,22 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         race.feeNote,
         race.cutoff,
         position,
+        race.teamSize ?? null,
       ];
       if (race.id && existingIds.has(race.id)) {
         keep.add(race.id);
         await tx.query(
           `update races set name = $1, distance_km = $2, elevation_up_m = $3, elevation_down_m = $4,
-           start_date = $5, start_time = $6, fee = $7, fee_note = $8, cutoff = $9, position = $10
-           where id = $11`,
+           start_date = $5, start_time = $6, fee = $7, fee_note = $8, cutoff = $9, position = $10,
+           team_size = $11 where id = $12`,
           [...values, race.id],
         );
+        // Keine Teamstrecke mehr: Teams auflösen, die Anmeldungen bleiben.
+        if (race.teamSize == null) await tx.query('delete from race_teams where race_id = $1', [race.id]);
       } else {
         await tx.query(
           `insert into races (name, distance_km, elevation_up_m, elevation_down_m, start_date, start_time,
-           fee, fee_note, cutoff, position, id, event_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           fee, fee_note, cutoff, position, team_size, id, event_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [...values, newId(), eventId],
         );
       }
@@ -886,19 +910,188 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return eventId;
   }
 
+  // Teilnahme und Teams -----------------------------------------------------------
+  // Bei Teamstrecken gehört jede Anmeldung zu einem Team. Eine Person zahlt fürs Team;
+  // setzt sie „Bezahlt“, gelten alle im Team als bezahlt, und die Gebühr wird als
+  // Ausgabe angelegt und aufs Team aufgeteilt (löschbar wie jede andere Ausgabe).
+
+  type Tx = Pick<Db, 'query'>;
+
+  async function teamRow(tx: Tx, teamId: string) {
+    const found = await tx.query<{ id: string; race_id: string; name: string; payer_id: string; expense_id: string | null }>(
+      'select id, race_id, name, payer_id, expense_id from race_teams where id = $1',
+      [teamId],
+    );
+    return found.rows[0];
+  }
+
+  async function teamMemberIds(tx: Tx, teamId: string): Promise<string[]> {
+    const found = await tx.query<{ user_id: string }>(
+      'select user_id from participations where team_id = $1 order by joined_at nulls last, user_id',
+      [teamId],
+    );
+    return found.rows.map((r) => r.user_id);
+  }
+
+  /** Nach dem Austritt: leeres Team auflösen, sonst ggf. eine neue zahlende Person bestimmen. */
+  async function afterLeave(tx: Tx, teamId: string, userId: string): Promise<void> {
+    const members = await teamMemberIds(tx, teamId);
+    if (members.length === 0) {
+      await tx.query('delete from race_teams where id = $1', [teamId]);
+      return;
+    }
+    const team = await teamRow(tx, teamId);
+    if (team !== undefined && team.payer_id === userId) {
+      await tx.query('update race_teams set payer_id = $1 where id = $2', [members[0], teamId]);
+    }
+  }
+
+  /** Die zahlende Person hat ihren Status geändert: aufs Team übertragen. */
+  async function payerChanged(
+    tx: Tx,
+    teamId: string,
+    payerId: string,
+    before: ParticipationStatus | null,
+    after: ParticipationStatus,
+  ): Promise<void> {
+    if (after === 'paid' && before !== 'paid') {
+      await tx.query(`update participations set status = 'paid', updated_at = $2 where team_id = $1`, [teamId, now()]);
+      await createTeamExpense(tx, teamId, payerId);
+    } else if (after !== 'paid' && before === 'paid') {
+      await tx.query(
+        `update participations set status = 'registered', updated_at = $2 where team_id = $1 and status = 'paid'`,
+        [teamId, now()],
+      );
+      // Doch nicht bezahlt: die automatisch angelegte Ausgabe entfällt.
+      const team = await teamRow(tx, teamId);
+      if (team?.expense_id) await tx.query('delete from expenses where id = $1', [team.expense_id]);
+    }
+  }
+
+  async function createTeamExpense(tx: Tx, teamId: string, payerId: string): Promise<void> {
+    const team = await teamRow(tx, teamId);
+    if (team === undefined || team.expense_id !== null) return;
+    const race = await tx.query<{ event_id: string; name: string; fee: number | null }>(
+      'select event_id, name, fee from races where id = $1',
+      [team.race_id],
+    );
+    const info = race.rows[0];
+    const cents = Math.round((info?.fee ?? 0) * 100);
+    const members = await teamMemberIds(tx, teamId);
+    if (info === undefined || cents <= 0 || members.length < 2) return;
+    const lang = await tx.query<{ language: Language }>('select language from users where id = $1', [payerId]);
+    const label = lang.rows[0]?.language === 'en' ? 'Entry fee' : 'Startgebühr';
+    const id = newId();
+    await tx.query(
+      `insert into expenses (id, event_id, paid_by, description, amount_cents, created_by, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, info.event_id, payerId, `${label} ${info.name} (${team.name})`.slice(0, 200), cents, payerId, now()],
+    );
+    await writeShares(tx, id, splitEqually(cents, [payerId, ...members.filter((m) => m !== payerId)]));
+    await tx.query('update race_teams set expense_id = $1 where id = $2', [id, teamId]);
+  }
+
   app.put<{ Params: { id: string } }>('/api/races/:id/participation', async (request) => {
     const userId = await requireUser(request);
-    const input = parse(participationSchema, request.body);
-    const eventId = await raceEvent(request.params.id, userId);
-    if (input.status === null) {
-      await db.query('delete from participations where race_id = $1 and user_id = $2', [request.params.id, userId]);
-    } else {
-      await db.query(
-        `insert into participations (race_id, user_id, status, updated_at) values ($1,$2,$3,$4)
-         on conflict (race_id, user_id) do update set status = excluded.status, updated_at = excluded.updated_at`,
-        [request.params.id, userId, input.status, now()],
+    const input = parse(participationInputSchema, request.body);
+    const raceId = request.params.id;
+    const eventId = await raceEvent(raceId, userId);
+    await db.transaction(async (tx) => {
+      const race = (await tx.query<{ team_size: number | null }>('select team_size from races where id = $1', [raceId])).rows[0];
+      const current = (
+        await tx.query<{ status: ParticipationStatus; team_id: string | null }>(
+          'select status, team_id from participations where race_id = $1 and user_id = $2',
+          [raceId, userId],
+        )
+      ).rows[0];
+      const oldTeam = current?.team_id ?? null;
+
+      if (input.status === null) {
+        await tx.query('delete from participations where race_id = $1 and user_id = $2', [raceId, userId]);
+        if (oldTeam !== null) await afterLeave(tx, oldTeam, userId);
+        return;
+      }
+
+      if (race?.team_size == null) {
+        await tx.query(
+          `insert into participations (race_id, user_id, status, updated_at) values ($1,$2,$3,$4)
+           on conflict (race_id, user_id) do update set status = excluded.status, updated_at = excluded.updated_at`,
+          [raceId, userId, input.status, now()],
+        );
+        return;
+      }
+
+      // Teamstrecke: Team bestimmen (bisheriges, gewähltes oder neues).
+      let teamId: string;
+      const wanted = input.teamId ?? null;
+      if (wanted === 'new' || (wanted === null && oldTeam === null)) {
+        const me = await tx.query<{ name: string }>('select name from users where id = $1', [userId]);
+        teamId = newId();
+        await tx.query('insert into race_teams (id, race_id, name, payer_id, created_at) values ($1,$2,$3,$4,$5)', [
+          teamId,
+          raceId,
+          `Team ${me.rows[0]?.name ?? ''}`.trim().slice(0, 80),
+          userId,
+          now(),
+        ]);
+      } else if (wanted !== null && wanted !== oldTeam) {
+        const team = await teamRow(tx, wanted);
+        if (team === undefined || team.race_id !== raceId) throw new HttpError(404, 'not_found', 'Team nicht gefunden');
+        const members = await teamMemberIds(tx, wanted);
+        if (members.length >= race.team_size) throw new HttpError(409, 'team_full', 'Das Team ist schon voll');
+        teamId = wanted;
+      } else {
+        teamId = oldTeam!;
+      }
+
+      const team = (await teamRow(tx, teamId))!;
+      const isPayer = team.payer_id === userId;
+      const sameTeam = teamId === oldTeam;
+      if (input.status === 'paid' && !isPayer) {
+        throw new HttpError(403, 'forbidden', `Bezahlt setzt die Person, die fürs Team zahlt`);
+      }
+      let status = input.status;
+      if (!isPayer) {
+        const payer = await tx.query<{ status: ParticipationStatus }>(
+          'select status from participations where race_id = $1 and user_id = $2',
+          [raceId, team.payer_id],
+        );
+        if (payer.rows[0]?.status === 'paid') status = 'paid';
+      }
+      await tx.query(
+        `insert into participations (race_id, user_id, status, updated_at, team_id, joined_at) values ($1,$2,$3,$4,$5,$4)
+         on conflict (race_id, user_id) do update set status = excluded.status, updated_at = excluded.updated_at,
+           team_id = excluded.team_id,
+           joined_at = case when participations.team_id is not distinct from excluded.team_id
+             then coalesce(participations.joined_at, excluded.joined_at) else excluded.joined_at end`,
+        [raceId, userId, status, now(), teamId],
       );
+      if (oldTeam !== null && !sameTeam) await afterLeave(tx, oldTeam, userId);
+      if (isPayer) await payerChanged(tx, teamId, userId, sameTeam ? (current?.status ?? null) : null, status);
+    });
+    return loadEvent(eventId, userId);
+  });
+
+  /** Team umbenennen oder eine andere Person zahlen lassen. Dürfen Teammitglieder und Admins. */
+  app.put<{ Params: { id: string } }>('/api/teams/:id', async (request) => {
+    const userId = await requireUser(request);
+    const input = parse(teamInputSchema, request.body);
+    const team = await teamRow(db, request.params.id);
+    if (team === undefined) throw new HttpError(404, 'not_found', 'Team nicht gefunden');
+    const eventId = await raceEvent(team.race_id, userId);
+    const event = await loadEvent(eventId, userId);
+    const members = await teamMemberIds(db, team.id);
+    if (!members.includes(userId) && (await membership(event.groupId, userId)) !== 'admin') {
+      throw new HttpError(403, 'forbidden', 'Nur Teammitglieder dürfen das Team ändern');
     }
+    if (input.payerId !== undefined && !members.includes(input.payerId)) {
+      throw new HttpError(400, 'invalid_input', 'Zahlen kann nur jemand aus dem Team');
+    }
+    await db.query('update race_teams set name = coalesce($1, name), payer_id = coalesce($2, payer_id) where id = $3', [
+      input.name ?? null,
+      input.payerId ?? null,
+      team.id,
+    ]);
     return loadEvent(eventId, userId);
   });
 

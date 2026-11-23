@@ -607,6 +607,28 @@ button.link {
   background: var(--ok-bg);
 }
 
+/* Teamstrecken */
+.team {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.team.mine {
+  border-color: var(--accent);
+}
+.team-badge {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ok-bg);
+}
+.segmented button:disabled {
+  opacity: 0.5;
+}
+
 .import {
   border-style: dashed;
 }

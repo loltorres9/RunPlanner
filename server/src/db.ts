@@ -239,6 +239,24 @@ create table if not exists settlements (
 );
 
 create index if not exists settlements_group_idx on settlements (group_id, created_at);
+
+-- Teamstrecken: Teamgröße an der Strecke, Teams mit einer zahlenden Person.
+alter table races add column if not exists team_size integer;
+
+create table if not exists race_teams (
+  id text primary key,
+  race_id text not null references races(id) on delete cascade,
+  name text not null,
+  payer_id text not null references users(id),
+  -- Automatisch angelegte Ausgabe für die Gebühr; wer sie löscht, löscht nur sie.
+  expense_id text references expenses(id) on delete set null,
+  created_at bigint not null
+);
+
+create index if not exists race_teams_race_idx on race_teams (race_id);
+
+alter table participations add column if not exists team_id text references race_teams(id) on delete set null;
+alter table participations add column if not exists joined_at bigint;
 `;
 
 export async function migrate(db: Db): Promise<void> {

@@ -2,7 +2,7 @@
  * Auswertungen, die App und Tests gleichermaßen brauchen.
  */
 
-import type { ParticipationStatus, RunEvent, Stay } from './model.js';
+import type { Participation, ParticipationStatus, Race, RaceTeam, RunEvent, Stay } from './model.js';
 
 export interface PersonCost {
   userId: string;
@@ -31,13 +31,37 @@ export function costsPerPerson(events: RunEvent[]): PersonCost[] {
           entry = { userId: p.userId, userName: p.userName, committed: 0, paid: 0, planned: 0, races: 0 };
           byUser.set(p.userId, entry);
         }
-        const fee = race.fee ?? 0;
+        const fee = feeFor(race, p);
         entry.races += 1;
         addFee(entry, p.status, fee);
       }
     }
   }
   return [...byUser.values()].sort((a, b) => a.userName.localeCompare(b.userName));
+}
+
+/**
+ * Anteil an der Startgebühr für die Kostenübersicht. Bei Teamstrecken zählt die
+ * Gebühr einmal, bei der Person, die fürs Team zahlt; die anderen tragen nichts.
+ * Wer (noch) in keinem Team ist, wird mit dem Anteil pro Kopf geplant.
+ */
+export function feeFor(race: Pick<Race, 'fee' | 'teamSize' | 'teams'>, p: Pick<Participation, 'userId' | 'teamId'>): number {
+  const fee = race.fee ?? 0;
+  if (!race.teamSize) return fee;
+  const team = race.teams.find((t) => t.id === p.teamId);
+  if (team === undefined) return fee / race.teamSize;
+  return team.payerId === p.userId ? fee : 0;
+}
+
+/** Team einer Person auf einer Strecke. */
+export function teamOf(race: Pick<Race, 'teams' | 'participants'>, userId: string): RaceTeam | undefined {
+  const teamId = race.participants.find((p) => p.userId === userId)?.teamId ?? null;
+  return race.teams.find((t) => t.id === teamId);
+}
+
+/** Mitglieder eines Teams. */
+export function teamMembers(race: Pick<Race, 'participants'>, teamId: string): Participation[] {
+  return race.participants.filter((p) => p.teamId === teamId);
 }
 
 function addFee(entry: PersonCost, status: ParticipationStatus, fee: number): void {

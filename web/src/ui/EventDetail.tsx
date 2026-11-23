@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { PARTICIPATION_STATUSES, eventTodos, type EventInput, type ParticipationStatus, type Race, type RunEvent } from '@runplanner/shared';
+import {
+  PARTICIPATION_STATUSES,
+  eventTodos,
+  teamMembers,
+  teamOf,
+  type EventInput,
+  type Participation,
+  type ParticipationStatus,
+  type Race,
+  type RunEvent,
+} from '@runplanner/shared';
 import { api, ApiError } from '../api.js';
 import { useI18n } from '../i18n/index.js';
 import { navigate, todayIso, useApp } from '../state.js';
@@ -34,6 +44,7 @@ export function eventToInput(event: RunEvent): EventInput {
       fee: r.fee,
       feeNote: r.feeNote,
       cutoff: r.cutoff,
+      teamSize: r.teamSize,
     })),
   };
 }
@@ -166,7 +177,12 @@ function RaceCard(props: {
     <div className="card stack race">
       <div className="row between wrap">
         <strong>{race.name}</strong>
-        {race.fee !== null && <span className="fee">{money(race.fee, props.currency)}</span>}
+        {race.fee !== null && (
+          <span className="fee">
+            {money(race.fee, props.currency)}
+            {race.teamSize !== null && <span className="muted small"> {t.team.perTeam}</span>}
+          </span>
+        )}
       </div>
       <div className="stats">
         {race.distanceKm !== null && <span>{number(race.distanceKm)} km</span>}
@@ -188,29 +204,144 @@ function RaceCard(props: {
 
       <RaceTrackPanel race={race} onChange={props.onChange} />
 
-      <div className="participants">
-        {race.participants.length === 0 ? (
-          <span className="muted small">{t.event.nobody}</span>
-        ) : (
-          race.participants.map((p) => (
-            <span key={p.userId} className={`person status-${p.status}`}>
-              <span className="avatar">{initials(p.userName)}</span>
-              {p.userName} · {t.status[p.status]}
-            </span>
-          ))
-        )}
-      </div>
+      {race.teamSize !== null ? (
+        <TeamPanel race={race} myId={props.myId} mine={mine} onChange={props.onChange} />
+      ) : (
+        <>
+          <div className="participants">
+            {race.participants.length === 0 ? (
+              <span className="muted small">{t.event.nobody}</span>
+            ) : (
+              race.participants.map((p) => <PersonChip key={p.userId} person={p} />)
+            )}
+          </div>
+
+          <div className="segmented small" role="group" aria-label={t.event.myStatus}>
+            <button type="button" className={mine === null ? 'active' : ''} onClick={() => props.onStatus(null)}>
+              {t.status.none}
+            </button>
+            {PARTICIPATION_STATUSES.map((status) => (
+              <button key={status} type="button" className={mine === status ? 'active' : ''} onClick={() => props.onStatus(status)}>
+                {t.status[status]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersonChip(props: { person: Participation }) {
+  const { t } = useI18n();
+  const p = props.person;
+  return (
+    <span className={`person status-${p.status}`}>
+      <span className="avatar">{initials(p.userName)}</span>
+      {p.userName} · {t.status[p.status]}
+    </span>
+  );
+}
+
+/**
+ * Teamstrecke: Teams mit Mitgliedern, beitreten oder gründen. „Bezahlt“ setzt nur,
+ * wer fürs Team zahlt; dann gilt das ganze Team als bezahlt.
+ */
+function TeamPanel(props: {
+  race: Race;
+  myId: string;
+  mine: ParticipationStatus | null;
+  onChange: (action: () => Promise<RunEvent>) => Promise<void>;
+}) {
+  const { t, f } = useI18n();
+  const { race, myId, mine } = props;
+  const size = race.teamSize ?? 0;
+  const myTeam = teamOf(race, myId);
+  const isPayer = myTeam?.payerId === myId;
+  const withoutTeam = race.participants.filter((p) => !race.teams.some((team) => team.id === p.teamId));
+  const set = (status: ParticipationStatus | null, teamId?: string) =>
+    props.onChange(() => api.setParticipation(race.id, status, teamId));
+  // Ohne Team ist man nach dem Eintragen Gründer:in und zahlt selbst.
+  const canPay = myTeam === undefined || isPayer;
+
+  return (
+    <div className="stack teams">
+      {race.teams.length === 0 && <span className="muted small">{t.team.none}</span>}
+      {race.teams.map((team) => {
+        const members = teamMembers(race, team.id);
+        const paid = members.find((m) => m.userId === team.payerId)?.status === 'paid';
+        const isMine = myTeam?.id === team.id;
+        return (
+          <div key={team.id} className={`team${isMine ? ' mine' : ''}`}>
+            <div className="row between wrap">
+              <strong>
+                {team.name} ({members.length}/{size})
+              </strong>
+              {paid ? (
+                <span className="team-badge">{t.status.paid}</span>
+              ) : (
+                <span className="muted small">{f(t.team.payer, { name: team.payerName })}</span>
+              )}
+            </div>
+            <div className="participants">
+              {members.map((p) => (
+                <PersonChip key={p.userId} person={p} />
+              ))}
+            </div>
+            <div className="row gap wrap">
+              {!isMine && members.length < size && (
+                <button type="button" className="small" onClick={() => set(mine === 'paid' || mine === null ? 'interested' : mine, team.id)}>
+                  {t.team.join}
+                </button>
+              )}
+              {isMine && !isPayer && (
+                <button type="button" className="small" onClick={() => props.onChange(() => api.updateTeam(team.id, { payerId: myId }))}>
+                  {t.team.takeOver}
+                </button>
+              )}
+            </div>
+            {isMine && paid && team.expenseId !== null && <p className="muted small">{t.team.expenseHint}</p>}
+          </div>
+        );
+      })}
+      {withoutTeam.length > 0 && (
+        <div className="participants">
+          <span className="muted small">{t.team.withoutTeam}</span>
+          {withoutTeam.map((p) => (
+            <PersonChip key={p.userId} person={p} />
+          ))}
+        </div>
+      )}
 
       <div className="segmented small" role="group" aria-label={t.event.myStatus}>
-        <button type="button" className={mine === null ? 'active' : ''} onClick={() => props.onStatus(null)}>
+        <button type="button" className={mine === null ? 'active' : ''} onClick={() => set(null)}>
           {t.status.none}
         </button>
         {PARTICIPATION_STATUSES.map((status) => (
-          <button key={status} type="button" className={mine === status ? 'active' : ''} onClick={() => props.onStatus(status)}>
+          <button
+            key={status}
+            type="button"
+            className={mine === status ? 'active' : ''}
+            disabled={status === 'paid' && !canPay}
+            title={status === 'paid' && !canPay ? f(t.team.paidBy, { name: myTeam?.payerName ?? '' }) : undefined}
+            onClick={() => set(status)}
+          >
             {t.status[status]}
           </button>
         ))}
       </div>
+      {myTeam === undefined ? (
+        <p className="muted small">{t.team.foundHint}</p>
+      ) : (
+        <div className="row gap wrap">
+          {!isPayer && <span className="muted small">{f(t.team.paidBy, { name: myTeam.payerName })}</span>}
+          {teamMembers(race, myTeam.id).length > 1 && (
+            <button type="button" className="link small" onClick={() => set(mine === 'paid' ? 'registered' : (mine ?? 'interested'), 'new')}>
+              {t.team.found}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
