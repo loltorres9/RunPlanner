@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useI18n } from '../i18n/index.js';
 import { navigate, useApp } from '../state.js';
 import { Icon, type IconName } from './Icon.js';
+import { UpdateBanner } from './UpdateBanner.js';
 
 const TABS: { id: string; path: string; icon: IconName; label: 'calendar' | 'list' | 'costs' | 'group' | 'settings' }[] = [
   { id: 'calendar', path: '', icon: 'calendar', label: 'calendar' },
@@ -40,6 +41,8 @@ export function Shell(props: { tab: string; children: ReactNode }) {
           <span className="group-name">{me.groups.find((g) => g.id === groupId)?.name}</span>
         )}
       </header>
+
+      <UpdateBanner />
 
       <main className="content">{props.children}</main>
 

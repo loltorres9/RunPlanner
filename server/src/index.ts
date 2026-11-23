@@ -13,6 +13,7 @@ import { resolveTokenSecret } from './auth.js';
 import { migrate } from './db.js';
 import { createClaudeImporter } from './importer.js';
 import { createPgDb } from './pgdb.js';
+import { createWebPushSender, localNow, runDailyReminders } from './push.js';
 import { serveWeb } from './static.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -41,7 +42,14 @@ async function main(): Promise<void> {
   const importer = apiKey === undefined ? null : createClaudeImporter({ apiKey, model: env('ANTHROPIC_MODEL') });
   if (importer === null) console.warn('ANTHROPIC_API_KEY fehlt: Der Website-Import ist abgeschaltet.');
 
+  const push = await createWebPushSender(db, {
+    publicKey: env('VAPID_PUBLIC_KEY'),
+    privateKey: env('VAPID_PRIVATE_KEY'),
+    subject: env('VAPID_SUBJECT'),
+  });
+
   const app = await buildApp({
+    push,
     db,
     tokenSecret,
     importer,
@@ -56,8 +64,32 @@ async function main(): Promise<void> {
     app.log.warn(`Kein Frontend unter ${webDir} gefunden, nur die API ist erreichbar.`);
   }
 
+  // Erinnerungen: alle 15 Minuten nachsehen, verschickt wird ab 8 Uhr Ortszeit. Was schon
+  // raus ist, merkt sich die Datenbank, deshalb schadet häufiges Prüfen nicht.
+  const timeZone = env('REMINDER_TIMEZONE') ?? 'Europe/Berlin';
+  const reminderHour = Number.parseInt(env('REMINDER_HOUR') ?? '8', 10);
+  let checking = false;
+  const checkReminders = async (): Promise<void> => {
+    if (checking) return;
+    checking = true;
+    try {
+      const { day, hour } = localNow(Date.now(), timeZone);
+      if (hour >= reminderHour) {
+        const sent = await runDailyReminders(db, push, day, (m) => app.log.warn(m));
+        if (sent > 0) app.log.info(`${sent} Erinnerungen verschickt`);
+      }
+    } catch (error) {
+      app.log.error(error);
+    } finally {
+      checking = false;
+    }
+  };
+  const reminderTimer = setInterval(() => void checkReminders(), 15 * 60 * 1000);
+  void checkReminders();
+
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`${signal} empfangen, fahre herunter`);
+    clearInterval(reminderTimer);
     await app.close();
     await db.close();
     process.exit(0);

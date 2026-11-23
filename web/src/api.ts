@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -58,7 +58,11 @@ export const api = {
     request<{ token: string; me: Me }>('POST', '/api/auth/register', body),
   login: (body: { email: string; password: string }) => request<{ token: string; me: Me }>('POST', '/api/auth/login', body),
   me: () => request<Me>('GET', '/api/me'),
-  updateMe: (body: { name?: string; language?: Language }) => request<Me>('PATCH', '/api/me', body),
+  updateMe: (body: { name?: string; language?: Language; notifications?: NotificationSettingsInput }) =>
+    request<Me>('PATCH', '/api/me', body),
+  pushKey: () => request<{ publicKey: string | null }>('GET', '/api/push/key'),
+  pushSubscribe: (subscription: PushSubscriptionJSON) => request<void>('POST', '/api/push/subscribe', subscription),
+  pushUnsubscribe: (endpoint: string) => request<void>('POST', '/api/push/unsubscribe', { endpoint }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request<{ token: string }>('POST', '/api/me/password', body),
 

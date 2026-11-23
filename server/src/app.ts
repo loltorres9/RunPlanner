@@ -11,6 +11,7 @@ import {
   accommodationInputSchema,
   eventInputSchema,
   eventNights,
+  notificationSettingsSchema,
   stayInputSchema,
   type Accommodation,
   type Stay,
@@ -40,6 +41,7 @@ import {
 } from './auth.js';
 import { migrate, type Db } from './db.js';
 import { ImportError, type Importer } from './importer.js';
+import { notifyNewEvent, type PushSender } from './push.js';
 
 export interface AppOptions {
   db: Db;
@@ -50,6 +52,8 @@ export interface AppOptions {
   now?: () => number;
   /** Höchstzahl Importe pro Person und Stunde. Begrenzt die API-Kosten. */
   importsPerHour?: number;
+  /** Fehlt er, gibt es keine Push-Benachrichtigungen. */
+  push?: PushSender | null;
 }
 
 class HttpError extends Error {
@@ -78,6 +82,12 @@ const loginSchema = z.object({
 const profileSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   language: z.enum(LANGUAGES).optional(),
+  notifications: notificationSettingsSchema.optional(),
+});
+
+const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(1000).refine((url) => url.startsWith('https://'), 'Ungültiger Push-Endpunkt'),
+  keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
 });
 
 const passwordSchema = z.object({
@@ -120,6 +130,9 @@ interface UserRow {
   password_hash: string;
   language: Language;
   token_epoch: number;
+  notify_new_event: boolean;
+  notify_deadline_days: number;
+  notify_event_days: number;
 }
 
 interface EventRow {
@@ -172,6 +185,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const { db, tokenSecret } = options;
   const now = options.now ?? (() => Date.now());
   const importer = options.importer ?? null;
+  const push = options.push ?? null;
   const loginThrottle = new Throttle(10, 15 * 60 * 1000);
   const importThrottle = new Throttle(options.importsPerHour ?? 30, 60 * 60 * 1000);
 
@@ -241,6 +255,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return {
       user: { id: user.id, email: user.email, name: user.name, language: user.language },
       groups: groups.rows,
+      notifications: {
+        newEvent: user.notify_new_event,
+        deadlineDays: user.notify_deadline_days,
+        eventDays: user.notify_event_days,
+      },
     };
   }
 
@@ -528,6 +547,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (input.language !== undefined) {
       await db.query('update users set language = $1 where id = $2', [input.language, userId]);
     }
+    const notify = input.notifications;
+    if (notify?.newEvent !== undefined) {
+      await db.query('update users set notify_new_event = $1 where id = $2', [notify.newEvent, userId]);
+    }
+    if (notify?.deadlineDays !== undefined) {
+      await db.query('update users set notify_deadline_days = $1 where id = $2', [notify.deadlineDays, userId]);
+    }
+    if (notify?.eventDays !== undefined) {
+      await db.query('update users set notify_event_days = $1 where id = $2', [notify.eventDays, userId]);
+    }
     return loadMe(userId);
   });
 
@@ -751,7 +780,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       await writeRaces(tx, eventId, input.races);
     });
     reply.code(201);
-    return loadEvent(eventId, userId);
+    const created = await loadEvent(eventId, userId);
+    // Nicht auf die Zustellung warten: Langsame Push-Dienste sollen das Speichern nicht bremsen.
+    void notifyNewEvent(db, push, { ...created, groupId: request.params.id }, (m) => request.log.warn(m)).catch((error) =>
+      request.log.error(error),
+    );
+    return created;
   });
 
   app.get<{ Params: { id: string } }>('/api/events/:id', async (request) =>
@@ -946,6 +980,32 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       await tx.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
     });
     return loadEvent(event.id, userId);
+  });
+
+  // Push-Benachrichtigungen ----------------------------------------------------
+
+  app.get('/api/push/key', async () => ({ publicKey: push?.publicKey ?? null }));
+
+  /** Meldet dieses Gerät für Benachrichtigungen an. Ein Endpunkt gehört immer der letzten Person. */
+  app.post('/api/push/subscribe', async (request, reply) => {
+    const userId = await requireUser(request);
+    const input = parse(pushSubscriptionSchema, request.body);
+    await db.query(
+      `insert into push_subscriptions (endpoint, user_id, p256dh, auth, created_at) values ($1,$2,$3,$4,$5)
+       on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh,
+         auth = excluded.auth, last_error = null`,
+      [input.endpoint, userId, input.keys.p256dh, input.keys.auth, now()],
+    );
+    reply.code(204);
+  });
+
+  app.post('/api/push/unsubscribe', async (request, reply) => {
+    const userId = await requireUser(request);
+    const endpoint = (request.body as { endpoint?: unknown } | null)?.endpoint;
+    if (typeof endpoint === 'string') {
+      await db.query('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, userId]);
+    }
+    reply.code(204);
   });
 
   // Import ---------------------------------------------------------------------

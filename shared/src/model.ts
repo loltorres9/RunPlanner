@@ -217,7 +217,33 @@ export interface GroupDetail extends GroupSummary {
 export interface Me {
   user: User;
   groups: GroupSummary[];
+  notifications: NotificationSettings;
 }
+
+/** Vorlaufzeiten für Erinnerungen, in Tagen; 0 heißt aus. */
+export const REMINDER_DAYS = [0, 1, 3, 7, 14] as const;
+
+/** Welche Push-Benachrichtigungen eine Person bekommt. Gilt für alle ihre Geräte. */
+export interface NotificationSettings {
+  /** Jemand aus der Gruppe hat eine Veranstaltung eingetragen. */
+  newEvent: boolean;
+  /** Tage vor dem Anmeldeschluss, wenn man nur „Interesse“ hat. */
+  deadlineDays: number;
+  /** Tage vor einer Veranstaltung, bei der man eingetragen ist. */
+  eventDays: number;
+}
+
+const reminderDays = z
+  .number()
+  .int()
+  .refine((value) => (REMINDER_DAYS as readonly number[]).includes(value), 'Ungültige Vorlaufzeit');
+
+export const notificationSettingsSchema = z.object({
+  newEvent: z.boolean().optional(),
+  deadlineDays: reminderDays.optional(),
+  eventDays: reminderDays.optional(),
+});
+export type NotificationSettingsInput = z.input<typeof notificationSettingsSchema>;
 
 /** Was der Import von einer Website liefert: ein Entwurf, den man vor dem Speichern prüft. */
 export interface ImportResult {

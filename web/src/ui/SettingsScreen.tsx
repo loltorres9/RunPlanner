@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/index.js';
 import { useApp } from '../state.js';
 import { APP_BUILT, APP_COMMIT, APP_VERSION } from '../version.js';
 import { LanguageSwitch } from './LanguageSwitch.js';
+import { NotificationSettings } from './NotificationSettings.js';
 import { applyTheme, storedTheme, type Theme } from '../theme.js';
 
 export function SettingsScreen() {
@@ -61,6 +62,8 @@ export function SettingsScreen() {
         <h2>{t.settings.language}</h2>
         <LanguageSwitch value={me.user.language} onChange={(language) => void run(async () => setMe(await api.updateMe({ language })), '')} />
       </section>
+
+      <NotificationSettings />
 
       <section className="card stack">
         <h2>{t.settings.theme}</h2>

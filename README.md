@@ -43,6 +43,13 @@ wird beim ersten Start erzeugt und in der Datenbank gespeichert.
 Optionale Variablen stehen in [`.env.example`](.env.example). `IMPORTS_PER_HOUR`
 (Standard 30) begrenzt die Importe pro Person und Stunde und damit die API-Kosten.
 
+**Push-Benachrichtigungen** brauchen keine Einrichtung: Die VAPID-Schlüssel erzeugt der
+Server beim ersten Start und legt sie in der Datenbank ab. Erinnerungen prüft er alle
+15 Minuten und verschickt sie ab `REMINDER_HOUR` (Standard 8) Uhr in `REMINDER_TIMEZONE`
+(Standard `Europe/Berlin`). Der Dienst darf dafür nicht schlafen gelegt werden
+(Railway „Serverless“ aus). Wer feste Schlüssel will, setzt `VAPID_PUBLIC_KEY` und
+`VAPID_PRIVATE_KEY`.
+
 ### Kosten des Imports
 
 Ein Import schickt den Text einer Seite an Claude (Modell `claude-opus-5-5`, niedriger
