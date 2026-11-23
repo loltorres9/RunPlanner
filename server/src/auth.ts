@@ -6,7 +6,7 @@
  * Tokentyp, den wir ausstellen, und `alg: none` ist so von vornherein ausgeschlossen.
  */
 
-import { createHmac, randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { Db } from './db.js';
 
@@ -95,6 +95,16 @@ export function newId(): string {
 /** Einladungscode: kurz genug zum Teilen, lang genug gegen Raten. */
 export function newInviteCode(): string {
   return randomBytes(9).toString('base64url');
+}
+
+/** Code für einen Reset-Link: 144 Bit Zufall, nicht zu erraten. */
+export function newResetCode(): string {
+  return randomBytes(18).toString('base64url');
+}
+
+/** In der Datenbank liegt nur der Hash, damit ein Datenbank-Leck keine gültigen Links verrät. */
+export function hashResetCode(code: string): string {
+  return createHash('sha256').update(code).digest('hex');
 }
 
 /**

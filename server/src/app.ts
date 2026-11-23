@@ -29,7 +29,9 @@ import {
   checkPassword,
   hashPassword,
   newId,
+  hashResetCode,
   newInviteCode,
+  newResetCode,
   signToken,
   Throttle,
   TOKEN_TTL_MS,
@@ -82,6 +84,9 @@ const passwordSchema = z.object({
   newPassword: z.string().min(8).max(200),
 });
 
+const resetSchema = z.object({ password: z.string().min(8).max(200) });
+/** Reset-Links gelten zwei Tage. */
+const RESET_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const groupSchema = z.object({ name: z.string().trim().min(1).max(80) });
 const roleSchema = z.object({ role: z.enum(GROUP_ROLES) });
 const participationSchema = z.object({ status: z.enum(PARTICIPATION_STATUSES).nullable() });
@@ -604,6 +609,64 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       throw new HttpError(409, 'last_admin', 'Erst eine andere Person zum Admin machen');
     }
   }
+
+  // Passwort zurücksetzen ------------------------------------------------------
+  // Es gibt keinen Mailversand: Ein Admin einer gemeinsamen Gruppe erzeugt einen
+  // Einmal-Link und schickt ihn selbst weiter (z. B. per Messenger).
+
+  /** Erzeugt einen Reset-Link für ein Mitglied; ältere Links der Person verfallen. */
+  app.post<{ Params: { id: string; userId: string } }>('/api/groups/:id/members/:userId/reset', async (request) => {
+    const userId = await requireUser(request);
+    const target = request.params.userId;
+    await requireAdmin(request.params.id, userId);
+    if (target === userId) throw new HttpError(400, 'own_account', 'Das eigene Passwort bitte in den Einstellungen ändern');
+    await membership(request.params.id, target);
+    const code = newResetCode();
+    const expiresAt = now() + RESET_TTL_MS;
+    await db.transaction(async (tx) => {
+      await tx.query('delete from password_resets where user_id = $1', [target]);
+      await tx.query('insert into password_resets (code_hash, user_id, created_by, expires_at) values ($1,$2,$3,$4)', [
+        hashResetCode(code),
+        target,
+        userId,
+        expiresAt,
+      ]);
+    });
+    return { code, expiresAt };
+  });
+
+  async function findReset(code: string): Promise<{ user_id: string; name: string }> {
+    const found = await db.query<{ user_id: string; name: string; expires_at: number | string }>(
+      `select r.user_id, u.name, r.expires_at from password_resets r join users u on u.id = r.user_id
+       where r.code_hash = $1`,
+      [hashResetCode(code)],
+    );
+    const row = found.rows[0];
+    if (row === undefined || Number(row.expires_at) < now()) {
+      throw new HttpError(404, 'reset_invalid', 'Link ungültig oder abgelaufen. Bitte einen neuen beim Admin anfordern.');
+    }
+    return row;
+  }
+
+  app.get<{ Params: { code: string } }>('/api/resets/:code', async (request) => {
+    const reset = await findReset(request.params.code);
+    return { name: reset.name };
+  });
+
+  app.post<{ Params: { code: string } }>('/api/resets/:code', async (request) => {
+    const input = parse(resetSchema, request.body);
+    const reset = await findReset(request.params.code);
+    const updated = await db.transaction(async (tx) => {
+      await tx.query('delete from password_resets where user_id = $1', [reset.user_id]);
+      // Neue Epoche: Alle Geräte werden abgemeldet.
+      return tx.query<UserRow>(
+        'update users set password_hash = $1, token_epoch = token_epoch + 1 where id = $2 returning *',
+        [await hashPassword(input.password), reset.user_id],
+      );
+    });
+    const user = updated.rows[0]!;
+    return { token: issueToken(user), me: await loadMe(user.id) };
+  });
 
   app.get<{ Params: { code: string } }>('/api/invites/:code', async (request) => {
     const found = await db.query<{ id: string; name: string }>('select id, name from groups where invite_code = $1', [

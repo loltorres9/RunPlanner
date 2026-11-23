@@ -40,6 +40,15 @@ create table if not exists users (
   token_epoch integer not null default 0
 );
 
+-- Einmal-Links zum Zurücksetzen des Passworts, die ein Gruppen-Admin erzeugt.
+-- Gespeichert wird nur der SHA-256 des Codes.
+create table if not exists password_resets (
+  code_hash text primary key,
+  user_id text not null references users(id) on delete cascade,
+  created_by text not null,
+  expires_at bigint not null
+);
+
 create table if not exists groups (
   id text primary key,
   name text not null,

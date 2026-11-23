@@ -1,5 +1,8 @@
 # Änderungen
 
+## 0.4.0 – 2026-11-23
+- Passwort vergessen: Ein Admin der Laufgruppe erzeugt beim Mitglied einen Einmal-Link (zwei Tage gültig) und schickt ihn selbst weiter. Mailversand gibt es bewusst noch nicht.
+
 ## 0.3.0 – 2026-11-23
 - Versionsnummer unten in den Einstellungen.
 - Unterkünfte: Vorschläge pro Veranstaltung, jede Person wählt keine, einen Vorschlag oder eine andere, mit „gebucht“.

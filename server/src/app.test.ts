@@ -132,6 +132,38 @@ describe('Laufgruppen', () => {
   });
 });
 
+describe('Passwort zurücksetzen', () => {
+  it('Admin erzeugt Einmal-Link, Mitglied setzt neues Passwort', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const fremd = await register('fremd@x.de', 'Fremd');
+    const path = `/api/groups/${group.body.id}/members/${ben.me.user.id}/reset`;
+
+    // Nur Admins, nicht für sich selbst, nicht für Fremde.
+    expect((await call('POST', `/api/groups/${group.body.id}/members/${anna.me.user.id}/reset`, ben.token)).status).toBe(403);
+    expect((await call('POST', `/api/groups/${group.body.id}/members/${anna.me.user.id}/reset`, anna.token)).status).toBe(400);
+    expect((await call('POST', `/api/groups/${group.body.id}/members/${fremd.me.user.id}/reset`, anna.token)).status).toBe(404);
+
+    const first = await call<{ code: string }>('POST', path, anna.token);
+    const reset = await call<{ code: string }>('POST', path, anna.token);
+    expect(reset.status).toBe(200);
+    // Ein neuer Link macht den alten ungültig.
+    expect((await call('GET', `/api/resets/${first.body.code}`)).status).toBe(404);
+    expect((await call<{ name: string }>('GET', `/api/resets/${reset.body.code}`)).body.name).toBe('Ben');
+
+    expect((await call('POST', `/api/resets/${reset.body.code}`, undefined, { password: 'kurz' })).status).toBe(400);
+    const done = await call<{ token: string; me: Me }>('POST', `/api/resets/${reset.body.code}`, undefined, { password: 'neuesPasswort' });
+    expect(done.status).toBe(200);
+    expect(done.body.me.user.id).toBe(ben.me.user.id);
+    // Alte Sitzungen sind abgemeldet, der Link ist verbraucht, das neue Passwort gilt.
+    expect((await call('GET', '/api/me', ben.token)).status).toBe(401);
+    expect((await call('POST', `/api/resets/${reset.body.code}`, undefined, { password: 'nochmalNeu1' })).status).toBe(404);
+    const login = await call('POST', '/api/auth/login', undefined, { email: 'ben@x.de', password: 'neuesPasswort' });
+    expect(login.status).toBe(200);
+  });
+});
+
 describe('Veranstaltungen', () => {
   async function setup() {
     const anna = await register('anna@x.de', 'Anna');

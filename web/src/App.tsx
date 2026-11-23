@@ -11,6 +11,7 @@ import { EventForm } from './ui/EventForm.js';
 import { GroupScreen } from './ui/GroupScreen.js';
 import { ListScreen } from './ui/ListScreen.js';
 import { Onboarding } from './ui/Onboarding.js';
+import { ResetScreen } from './ui/ResetScreen.js';
 import { Shell } from './ui/Shell.js';
 import { SettingsScreen } from './ui/SettingsScreen.js';
 
@@ -54,8 +55,23 @@ export function App() {
   // Einladungslinks: #/join/<code>
   const inviteCode = route[0] === 'join' ? (route[1] ?? null) : null;
 
+  // Reset-Links: #/reset/<code>, auch wenn auf dem Gerät jemand angemeldet ist.
+  const resetCode = route[0] === 'reset' ? (route[1] ?? null) : null;
+
   let content;
-  if (booting) {
+  if (resetCode !== null) {
+    content = (
+      <ResetScreen
+        code={resetCode}
+        onDone={(token, next) => {
+          setToken(token);
+          setMe(next);
+          setBooting(false);
+          navigate('', true);
+        }}
+      />
+    );
+  } else if (booting) {
     content = <div className="center muted">{i18n.t.common.loading}</div>;
   } else if (me === null) {
     content = (
