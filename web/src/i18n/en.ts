@@ -19,6 +19,7 @@ export const en: Messages = {
     share: 'Share',
   },
   auth: {
+    forgot: 'Forgot your password? An admin of your running group can send you a reset link from “Group”.',
     login: 'Sign in',
     register: 'Create account',
     email: 'Email',
@@ -161,6 +162,10 @@ export const en: Messages = {
     hint: '“Registered” includes paid entries. “Interested” are races without a registration yet.',
   },
   group: {
+    resetLink: 'Password link',
+    resetDone: 'Done',
+    resetLinkFor: 'Password link for {name}',
+    resetLinkHint: 'Valid for two days and only once. Send it to {name} yourself, e.g. via a messenger. Anyone with the link can set the password.',
     members: 'Members',
     admin: 'Admin',
     member: 'Member',
@@ -178,6 +183,12 @@ export const en: Messages = {
     switch: 'Switch group',
     another: 'Create or join another group',
     you: 'you',
+  },
+  reset: {
+    title: 'New password',
+    intro: 'Hi {name}, choose a new password. You will be signed out on all other devices.',
+    save: 'Save password',
+    toLogin: 'Go to sign in',
   },
   settings: {
     version: 'Version {version}',

@@ -12,6 +12,8 @@ export function GroupScreen() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [name, setName] = useState('');
+  const [reset, setReset] = useState<{ userId: string; name: string; link: string } | null>(null);
+  const [resetCopied, setResetCopied] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -49,6 +51,24 @@ export function GroupScreen() {
     await navigator.clipboard?.writeText(link).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function createResetLink(userId: string, memberName: string) {
+    await run(async () => {
+      const { code } = await api.resetLink(group!.id, userId);
+      setReset({ userId, name: memberName, link: `${window.location.origin}/#/reset/${code}` });
+      setResetCopied(false);
+    });
+  }
+
+  async function shareReset() {
+    if (!reset) return;
+    if (navigator.share) {
+      await navigator.share({ title: `${t.appName}: ${t.reset.title}`, url: reset.link }).catch(() => {});
+      return;
+    }
+    await navigator.clipboard?.writeText(reset.link).catch(() => {});
+    setResetCopied(true);
   }
 
   async function removeMember(userId: string, memberName: string) {
@@ -125,6 +145,9 @@ export function GroupScreen() {
                   >
                     {m.role === 'admin' ? t.group.makeMember : t.group.makeAdmin}
                   </button>
+                  <button type="button" className="small" onClick={() => createResetLink(m.userId, m.name)}>
+                    {t.group.resetLink}
+                  </button>
                   <button type="button" className="small danger" onClick={() => removeMember(m.userId, m.name)}>
                     {t.group.remove}
                   </button>
@@ -133,6 +156,21 @@ export function GroupScreen() {
             </li>
           ))}
         </ul>
+        {reset && (
+          <div className="notice stack reset-box">
+            <strong>{f(t.group.resetLinkFor, { name: reset.name })}</strong>
+            <code className="invite-link">{reset.link}</code>
+            <p className="small">{f(t.group.resetLinkHint, { name: reset.name })}</p>
+            <div className="row gap wrap">
+              <button type="button" className="primary" onClick={shareReset}>
+                {resetCopied ? t.common.copied : t.common.share}
+              </button>
+              <button type="button" className="link" onClick={() => setReset(null)}>
+                {t.group.resetDone}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="row gap wrap">

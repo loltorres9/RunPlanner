@@ -69,6 +69,11 @@ export const api = {
   setRole: (id: string, userId: string, role: 'admin' | 'member') =>
     request<GroupDetail>('PATCH', `/api/groups/${id}/members/${userId}`, { role }),
   removeMember: (id: string, userId: string) => request<Me>('DELETE', `/api/groups/${id}/members/${userId}`),
+  resetLink: (id: string, userId: string) =>
+    request<{ code: string; expiresAt: number }>('POST', `/api/groups/${id}/members/${userId}/reset`),
+  resetPreview: (code: string) => request<{ name: string }>('GET', `/api/resets/${encodeURIComponent(code)}`),
+  resetPassword: (code: string, password: string) =>
+    request<{ token: string; me: Me }>('POST', `/api/resets/${encodeURIComponent(code)}`, { password }),
   invitePreview: (code: string) => request<{ groupName: string }>('GET', `/api/invites/${encodeURIComponent(code)}`),
   joinGroup: (code: string) => request<{ groupId: string; me: Me }>('POST', `/api/invites/${encodeURIComponent(code)}/join`),
 

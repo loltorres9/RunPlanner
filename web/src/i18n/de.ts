@@ -17,6 +17,7 @@ export const de = {
     share: 'Teilen',
   },
   auth: {
+    forgot: 'Passwort vergessen? Ein Admin deiner Laufgruppe kann dir unter „Gruppe“ einen Link zum Zurücksetzen schicken.',
     login: 'Anmelden',
     register: 'Konto anlegen',
     email: 'E-Mail',
@@ -159,6 +160,10 @@ export const de = {
     hint: '„Angemeldet“ enthält auch Bezahltes. „Interesse“ sind Läufe, für die noch keine Anmeldung besteht.',
   },
   group: {
+    resetLink: 'Passwort-Link',
+    resetDone: 'Fertig',
+    resetLinkFor: 'Passwort-Link für {name}',
+    resetLinkHint: 'Gilt zwei Tage und nur einmal. Schick ihn {name} selbst, z. B. per Messenger. Wer den Link hat, kann das Passwort setzen.',
     members: 'Mitglieder',
     admin: 'Admin',
     member: 'Mitglied',
@@ -176,6 +181,12 @@ export const de = {
     switch: 'Gruppe wechseln',
     another: 'Weitere Gruppe anlegen oder beitreten',
     you: 'du',
+  },
+  reset: {
+    title: 'Neues Passwort',
+    intro: 'Hallo {name}, wähl ein neues Passwort. Danach bist du auf allen anderen Geräten abgemeldet.',
+    save: 'Passwort speichern',
+    toLogin: 'Zur Anmeldung',
   },
   settings: {
     version: 'Version {version}',

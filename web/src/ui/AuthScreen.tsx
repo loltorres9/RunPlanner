@@ -84,6 +84,7 @@ export function AuthScreen(props: {
             {mode === 'login' ? t.auth.login : t.auth.register}
           </button>
         </form>
+        {mode === 'login' && <p className="muted small">{t.auth.forgot}</p>}
         <button type="button" className="link" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
           {mode === 'login' ? t.auth.toRegister : t.auth.toLogin}
         </button>
