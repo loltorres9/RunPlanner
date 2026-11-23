@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { EventInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -78,5 +78,10 @@ export const api = {
   deleteEvent: (id: string) => request<void>('DELETE', `/api/events/${id}`),
   setParticipation: (raceId: string, status: ParticipationStatus | null) =>
     request<RunEvent>('PUT', `/api/races/${raceId}/participation`, { status }),
+  addAccommodation: (eventId: string, input: AccommodationInput) =>
+    request<RunEvent>('POST', `/api/events/${eventId}/accommodations`, input),
+  updateAccommodation: (id: string, input: AccommodationInput) => request<RunEvent>('PUT', `/api/accommodations/${id}`, input),
+  deleteAccommodation: (id: string) => request<RunEvent>('DELETE', `/api/accommodations/${id}`),
+  setStay: (eventId: string, input: StayInput | { choice: null }) => request<RunEvent>('PUT', `/api/events/${eventId}/stay`, input),
   importFromUrl: (url: string, language: Language) => request<ImportResult>('POST', '/api/import', { url, language }),
 };

@@ -34,7 +34,6 @@ interface Draft {
   registrationDeadline: string;
   currency: string;
   accommodationNeeded: boolean;
-  accommodationBooked: boolean;
   accommodationNotes: string;
   notes: string;
   races: RaceDraft[];
@@ -54,7 +53,6 @@ function toDraft(input: EventInput): Draft {
     registrationDeadline: str(input.registrationDeadline),
     currency: input.currency ?? 'EUR',
     accommodationNeeded: input.accommodationNeeded ?? false,
-    accommodationBooked: input.accommodationBooked ?? false,
     accommodationNotes: str(input.accommodationNotes),
     notes: str(input.notes),
     races: (input.races ?? []).map(raceToDraft),
@@ -113,7 +111,6 @@ function fromDraft(draft: Draft): EventInput {
     registrationDeadline: draft.registrationDeadline || null,
     currency: draft.currency.toUpperCase(),
     accommodationNeeded: draft.accommodationNeeded,
-    accommodationBooked: draft.accommodationNeeded && draft.accommodationBooked,
     accommodationNotes: draft.accommodationNotes || null,
     notes: draft.notes || null,
     races: draft.races
@@ -294,10 +291,6 @@ export function EventForm(props: { eventId?: string }) {
         </label>
         {draft.accommodationNeeded && (
           <>
-            <label className="toggle">
-              <input type="checkbox" checked={draft.accommodationBooked} onChange={(e) => set('accommodationBooked', e.target.checked)} />
-              {t.event.accommodationBooked}
-            </label>
             <label>
               {t.event.accommodationNotes}
               <textarea rows={2} value={draft.accommodationNotes} onChange={(e) => set('accommodationNotes', e.target.value)} />

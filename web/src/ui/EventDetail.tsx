@@ -5,6 +5,7 @@ import { useI18n } from '../i18n/index.js';
 import { navigate, todayIso, useApp } from '../state.js';
 import { eventColor, initials } from './EventCard.js';
 import { Icon } from './Icon.js';
+import { StaysSection } from './StaysSection.js';
 
 export function eventToInput(event: RunEvent): EventInput {
   return {
@@ -16,7 +17,6 @@ export function eventToInput(event: RunEvent): EventInput {
     registrationDeadline: event.registrationDeadline,
     currency: event.currency,
     accommodationNeeded: event.accommodationNeeded,
-    accommodationBooked: event.accommodationBooked,
     accommodationNotes: event.accommodationNotes,
     notes: event.notes,
     races: event.races.map((r) => ({
@@ -107,20 +107,6 @@ export function EventDetail(props: { eventId: string }) {
           )}
         </div>
 
-        {event.accommodationNeeded && (
-          <div className={`accommodation ${event.accommodationBooked ? 'ok' : 'open'}`}>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={event.accommodationBooked}
-                onChange={(e) => update(() => api.updateEvent(event.id, { ...eventToInput(event), accommodationBooked: e.target.checked }))}
-              />
-              <Icon name="bed" size={16} /> {t.event.accommodationBooked}
-            </label>
-            {event.accommodationNotes && <p className="pre">{event.accommodationNotes}</p>}
-          </div>
-        )}
-
         {event.notes && <p className="pre">{event.notes}</p>}
         <p className="muted small">{f(t.event.addedBy, { name: event.createdByName })}</p>
       </div>
@@ -138,6 +124,8 @@ export function EventDetail(props: { eventId: string }) {
           onStatus={(status) => update(() => api.setParticipation(race.id, status))}
         />
       ))}
+
+      {event.accommodationNeeded && <StaysSection event={event} onChange={(action) => update(action)} />}
 
       <div className="row gap">
         <button type="button" className="primary" onClick={() => navigate(`event/${event.id}/edit`)}>

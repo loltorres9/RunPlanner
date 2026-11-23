@@ -8,7 +8,11 @@
 
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
+  accommodationInputSchema,
   eventInputSchema,
+  stayInputSchema,
+  type Accommodation,
+  type Stay,
   GROUP_ROLES,
   LANGUAGES,
   PARTICIPATION_STATUSES,
@@ -117,7 +121,6 @@ interface EventRow {
   registration_deadline: string | null;
   currency: string;
   accommodation_needed: boolean;
-  accommodation_booked: boolean;
   accommodation_notes: string | null;
   notes: string | null;
   created_by: string;
@@ -279,6 +282,48 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       list.push({ userId: p.user_id, userName: p.user_name, status: p.status });
       byRace.set(p.race_id, list);
     }
+    const accommodations = await db.query<{
+      id: string;
+      event_id: string;
+      name: string;
+      url: string | null;
+      price: string | null;
+      notes: string | null;
+      created_by: string;
+    }>('select * from accommodations where event_id = any($1::text[]) order by created_at', [ids]);
+    const stays = await db.query<{
+      event_id: string;
+      user_id: string;
+      user_name: string;
+      choice: Stay['choice'];
+      accommodation_id: string | null;
+      other_text: string | null;
+      booked: boolean;
+    }>(
+      `select s.*, u.name as user_name from stays s join users u on u.id = s.user_id
+       where s.event_id = any($1::text[]) order by u.name`,
+      [ids],
+    );
+    const accommodationsByEvent = new Map<string, Accommodation[]>();
+    for (const a of accommodations.rows) {
+      const list = accommodationsByEvent.get(a.event_id) ?? [];
+      list.push({ id: a.id, name: a.name, url: a.url, price: a.price, notes: a.notes, createdBy: a.created_by });
+      accommodationsByEvent.set(a.event_id, list);
+    }
+    const staysByEvent = new Map<string, Stay[]>();
+    for (const s of stays.rows) {
+      const list = staysByEvent.get(s.event_id) ?? [];
+      list.push({
+        userId: s.user_id,
+        userName: s.user_name,
+        choice: s.choice,
+        accommodationId: s.accommodation_id,
+        otherText: s.other_text,
+        booked: s.booked,
+      });
+      staysByEvent.set(s.event_id, list);
+    }
+
     const byEvent = new Map<string, Race[]>();
     for (const r of races.rows) {
       const list = byEvent.get(r.event_id) ?? [];
@@ -308,7 +353,6 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       registrationDeadline: e.registration_deadline,
       currency: e.currency,
       accommodationNeeded: e.accommodation_needed,
-      accommodationBooked: e.accommodation_booked,
       accommodationNotes: e.accommodation_notes,
       notes: e.notes,
       createdBy: e.created_by,
@@ -316,6 +360,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       createdAt: e.created_at,
       updatedAt: e.updated_at,
       races: byEvent.get(e.id) ?? [],
+      accommodations: accommodationsByEvent.get(e.id) ?? [],
+      stays: staysByEvent.get(e.id) ?? [],
     }));
   }
 
@@ -378,7 +424,6 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       input.registrationDeadline ?? null,
       input.currency.toUpperCase(),
       input.accommodationNeeded,
-      input.accommodationBooked,
       input.accommodationNotes,
       input.notes,
     ];
@@ -613,9 +658,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await db.transaction(async (tx) => {
       await tx.query(
         `insert into events (name, location, start_date, end_date, website, registration_deadline, currency,
-         accommodation_needed, accommodation_booked, accommodation_notes, notes,
+         accommodation_needed, accommodation_notes, notes,
          id, group_id, created_by, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [...eventValues(input), eventId, request.params.id, userId, at, at],
       );
       await writeRaces(tx, eventId, input.races);
@@ -635,8 +680,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await db.transaction(async (tx) => {
       await tx.query(
         `update events set name = $1, location = $2, start_date = $3, end_date = $4, website = $5,
-         registration_deadline = $6, currency = $7, accommodation_needed = $8, accommodation_booked = $9,
-         accommodation_notes = $10, notes = $11, updated_at = $12 where id = $13`,
+         registration_deadline = $6, currency = $7, accommodation_needed = $8,
+         accommodation_notes = $9, notes = $10, updated_at = $11 where id = $12`,
         [...eventValues(input), now(), existing.id],
       );
       await writeRaces(tx, existing.id, input.races);
@@ -675,6 +720,86 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       );
     }
     return loadEvent(eventId, userId);
+  });
+
+  // Unterkünfte ----------------------------------------------------------------
+
+  /** Veranstaltung einer vorgeschlagenen Unterkunft, sofern sie in einer eigenen Gruppe liegt. */
+  async function accommodationEvent(accommodationId: string, userId: string): Promise<string> {
+    const found = await db.query<{ event_id: string }>(
+      `select a.event_id from accommodations a join events e on e.id = a.event_id
+       join memberships m on m.group_id = e.group_id and m.user_id = $2 where a.id = $1`,
+      [accommodationId, userId],
+    );
+    const eventId = found.rows[0]?.event_id;
+    if (eventId === undefined) throw new HttpError(404, 'not_found', 'Unterkunft nicht gefunden');
+    return eventId;
+  }
+
+  app.post<{ Params: { id: string } }>('/api/events/:id/accommodations', async (request, reply) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    const input = parse(accommodationInputSchema, request.body);
+    await db.query(
+      `insert into accommodations (id, event_id, name, url, price, notes, created_by, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [newId(), event.id, input.name, input.url, input.price, input.notes, userId, now()],
+    );
+    reply.code(201);
+    return loadEvent(event.id, userId);
+  });
+
+  app.put<{ Params: { id: string } }>('/api/accommodations/:id', async (request) => {
+    const userId = await requireUser(request);
+    const eventId = await accommodationEvent(request.params.id, userId);
+    const input = parse(accommodationInputSchema, request.body);
+    await db.query('update accommodations set name = $1, url = $2, price = $3, notes = $4 where id = $5', [
+      input.name,
+      input.url,
+      input.price,
+      input.notes,
+      request.params.id,
+    ]);
+    return loadEvent(eventId, userId);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/accommodations/:id', async (request) => {
+    const userId = await requireUser(request);
+    const eventId = await accommodationEvent(request.params.id, userId);
+    await db.query('delete from accommodations where id = $1', [request.params.id]);
+    return loadEvent(eventId, userId);
+  });
+
+  /** Eigene Unterkunft setzen; `null` nimmt die Wahl zurück. */
+  app.put<{ Params: { id: string } }>('/api/events/:id/stay', async (request) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    if (request.body === null || (request.body as { choice?: unknown }).choice === null) {
+      await db.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
+      return loadEvent(event.id, userId);
+    }
+    const input = parse(stayInputSchema, request.body);
+    const accommodationId = input.choice === 'suggested' ? (input.accommodationId ?? null) : null;
+    if (accommodationId !== null && !event.accommodations.some((a) => a.id === accommodationId)) {
+      throw new HttpError(400, 'invalid_input', 'Diese Unterkunft gehört nicht zur Veranstaltung');
+    }
+    await db.query(
+      `insert into stays (event_id, user_id, choice, accommodation_id, other_text, booked, updated_at)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (event_id, user_id) do update set choice = excluded.choice,
+         accommodation_id = excluded.accommodation_id, other_text = excluded.other_text,
+         booked = excluded.booked, updated_at = excluded.updated_at`,
+      [
+        event.id,
+        userId,
+        input.choice,
+        accommodationId,
+        input.choice === 'other' ? input.otherText : null,
+        input.choice === 'none' ? false : input.booked,
+        now(),
+      ],
+    );
+    return loadEvent(event.id, userId);
   });
 
   // Import ---------------------------------------------------------------------
