@@ -6,6 +6,7 @@ import { navigate, todayIso, useApp } from '../state.js';
 import { eventColor, initials } from './EventCard.js';
 import { Icon } from './Icon.js';
 import { CommentsSection } from './CommentsSection.js';
+import { ExpensesSection } from './ExpensesSection.js';
 import { RaceTrackPanel } from './RaceTrackPanel.js';
 import { StaysSection } from './StaysSection.js';
 
@@ -129,6 +130,8 @@ export function EventDetail(props: { eventId: string }) {
       ))}
 
       {event.accommodationNeeded && <StaysSection event={event} onChange={(action) => update(action)} />}
+
+      <ExpensesSection event={event} />
 
       <CommentsSection event={event} />
 

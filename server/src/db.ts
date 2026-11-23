@@ -204,6 +204,41 @@ create table if not exists race_tracks (
   uploaded_by text not null references users(id),
   uploaded_at bigint not null
 );
+
+-- Kosten teilen: Ausgaben einer Veranstaltung, Beträge in Cent.
+create table if not exists expenses (
+  id text primary key,
+  event_id text not null references events(id) on delete cascade,
+  paid_by text not null references users(id),
+  description text not null,
+  amount_cents integer not null,
+  created_by text not null references users(id),
+  created_at bigint not null
+);
+
+create index if not exists expenses_event_idx on expenses (event_id);
+
+-- Wer welchen Anteil einer Ausgabe trägt.
+create table if not exists expense_shares (
+  expense_id text not null references expenses(id) on delete cascade,
+  user_id text not null references users(id),
+  amount_cents integer not null,
+  primary key (expense_id, user_id)
+);
+
+-- Erledigte Zahlungen zwischen zwei Personen einer Gruppe.
+create table if not exists settlements (
+  id text primary key,
+  group_id text not null references groups(id) on delete cascade,
+  from_user text not null references users(id),
+  to_user text not null references users(id),
+  amount_cents integer not null,
+  currency text not null,
+  created_by text not null references users(id),
+  created_at bigint not null
+);
+
+create index if not exists settlements_group_idx on settlements (group_id, created_at);
 `;
 
 export async function migrate(db: Db): Promise<void> {

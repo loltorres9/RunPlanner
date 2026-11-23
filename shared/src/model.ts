@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import type { Expense } from './expenses.js';
 
 export const LANGUAGES = ['de', 'en'] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -140,6 +141,8 @@ export interface RunEvent {
   stays: Stay[];
   /** Kurzinfo zu den Kommentaren, für Zähler in der Liste. */
   comments: CommentSummary;
+  /** Geteilte Ausgaben (Kosten teilen). */
+  expenses: Expense[];
 }
 
 export interface CommentSummary {

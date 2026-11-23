@@ -13,6 +13,10 @@ import {
   eventNights,
   trackInputSchema,
   commentInputSchema,
+  expenseInputSchema,
+  settlementInputSchema,
+  type Expense,
+  type Settlement,
   type EventComment,
   notificationSettingsSchema,
   stayInputSchema,
@@ -405,6 +409,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       ]),
     );
 
+    const expensesByEvent = await loadExpenses(ids, new Map(events.rows.map((e) => [e.id, e.currency])));
+
     const byEvent = new Map<string, Race[]>();
     for (const r of races.rows) {
       const list = byEvent.get(r.event_id) ?? [];
@@ -445,6 +451,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       accommodations: accommodationsByEvent.get(e.id) ?? [],
       stays: staysByEvent.get(e.id) ?? [],
       comments: commentsByEvent.get(e.id) ?? { count: 0, lastAt: null, lastBy: null },
+      expenses: expensesByEvent.get(e.id) ?? [],
     }));
   }
 
@@ -1149,6 +1156,207 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (comment.user_id !== userId) throw new HttpError(403, 'forbidden', 'Nur eigene Kommentare lassen sich löschen');
     await db.query('delete from comments where id = $1', [request.params.id]);
     return loadComments(comment.event_id);
+  });
+
+  // Kosten teilen ---------------------------------------------------------------
+  // Jedes Gruppenmitglied darf Ausgaben erfassen. Ändern und löschen dürfen die Person,
+  // die sie erfasst hat, die Person, die bezahlt hat, und die Admins.
+
+  async function loadExpenses(eventIds: string[], currencyByEvent: Map<string, string>): Promise<Map<string, Expense[]>> {
+    const rows = await db.query<{
+      id: string;
+      event_id: string;
+      paid_by: string;
+      paid_by_name: string;
+      description: string;
+      amount_cents: number;
+      created_by: string;
+      created_at: string | number;
+    }>(
+      `select x.*, u.name as paid_by_name from expenses x join users u on u.id = x.paid_by
+       where x.event_id = any($1::text[]) order by x.created_at, x.id`,
+      [eventIds],
+    );
+    const shares = await db.query<{ expense_id: string; user_id: string; user_name: string; amount_cents: number }>(
+      `select s.expense_id, s.user_id, u.name as user_name, s.amount_cents from expense_shares s
+       join users u on u.id = s.user_id where s.expense_id = any($1::text[]) order by u.name`,
+      [rows.rows.map((r) => r.id)],
+    );
+    const sharesByExpense = new Map<string, Expense['shares']>();
+    for (const s of shares.rows) {
+      const list = sharesByExpense.get(s.expense_id) ?? [];
+      list.push({ userId: s.user_id, userName: s.user_name, amountCents: Number(s.amount_cents) });
+      sharesByExpense.set(s.expense_id, list);
+    }
+    const result = new Map<string, Expense[]>();
+    for (const r of rows.rows) {
+      const list = result.get(r.event_id) ?? [];
+      list.push({
+        id: r.id,
+        eventId: r.event_id,
+        paidBy: r.paid_by,
+        paidByName: r.paid_by_name,
+        description: r.description,
+        amountCents: Number(r.amount_cents),
+        currency: currencyByEvent.get(r.event_id) ?? 'EUR',
+        shares: sharesByExpense.get(r.id) ?? [],
+        createdBy: r.created_by,
+        createdAt: Number(r.created_at),
+      });
+      result.set(r.event_id, list);
+    }
+    return result;
+  }
+
+  /** Alle beteiligten Personen müssen in der Gruppe der Veranstaltung sein. */
+  async function assertMembers(groupId: string, userIds: string[]): Promise<void> {
+    const unique = [...new Set(userIds)];
+    const found = await db.query<{ user_id: string }>(
+      'select user_id from memberships where group_id = $1 and user_id = any($2::text[])',
+      [groupId, unique],
+    );
+    if (found.rows.length !== unique.length) {
+      throw new HttpError(400, 'invalid_input', 'Alle Beteiligten müssen in der Laufgruppe sein');
+    }
+  }
+
+  async function writeShares(tx: Pick<Db, 'query'>, expenseId: string, shares: { userId: string; amountCents: number }[]) {
+    await tx.query('delete from expense_shares where expense_id = $1', [expenseId]);
+    for (const s of shares.filter((share) => share.amountCents > 0)) {
+      await tx.query('insert into expense_shares (expense_id, user_id, amount_cents) values ($1,$2,$3)', [
+        expenseId,
+        s.userId,
+        s.amountCents,
+      ]);
+    }
+  }
+
+  app.post<{ Params: { id: string } }>('/api/events/:id/expenses', async (request, reply) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    const input = parse(expenseInputSchema, request.body);
+    await assertMembers(event.groupId, [input.paidBy, ...input.shares.map((s) => s.userId)]);
+    const id = newId();
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `insert into expenses (id, event_id, paid_by, description, amount_cents, created_by, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7)`,
+        [id, event.id, input.paidBy, input.description, input.amountCents, userId, now()],
+      );
+      await writeShares(tx, id, input.shares);
+    });
+    reply.code(201);
+    return loadEvent(event.id, userId);
+  });
+
+  async function editableExpense(expenseId: string, userId: string): Promise<RunEvent> {
+    const found = await db.query<{ event_id: string; paid_by: string; created_by: string }>(
+      'select event_id, paid_by, created_by from expenses where id = $1',
+      [expenseId],
+    );
+    const expense = found.rows[0];
+    if (expense === undefined) throw new HttpError(404, 'not_found', 'Ausgabe nicht gefunden');
+    const event = await loadEvent(expense.event_id, userId);
+    const role = await membership(event.groupId, userId);
+    if (role !== 'admin' && expense.paid_by !== userId && expense.created_by !== userId) {
+      throw new HttpError(403, 'forbidden', 'Nur wer bezahlt oder erfasst hat und Admins dürfen das');
+    }
+    return event;
+  }
+
+  app.put<{ Params: { id: string } }>('/api/expenses/:id', async (request) => {
+    const userId = await requireUser(request);
+    const event = await editableExpense(request.params.id, userId);
+    const input = parse(expenseInputSchema, request.body);
+    await assertMembers(event.groupId, [input.paidBy, ...input.shares.map((s) => s.userId)]);
+    await db.transaction(async (tx) => {
+      await tx.query('update expenses set paid_by = $1, description = $2, amount_cents = $3 where id = $4', [
+        input.paidBy,
+        input.description,
+        input.amountCents,
+        request.params.id,
+      ]);
+      await writeShares(tx, request.params.id, input.shares);
+    });
+    return loadEvent(event.id, userId);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/expenses/:id', async (request) => {
+    const userId = await requireUser(request);
+    const event = await editableExpense(request.params.id, userId);
+    await db.query('delete from expenses where id = $1', [request.params.id]);
+    return loadEvent(event.id, userId);
+  });
+
+  async function loadSettlements(groupId: string): Promise<Settlement[]> {
+    const rows = await db.query<{
+      id: string;
+      from_user: string;
+      from_name: string;
+      to_user: string;
+      to_name: string;
+      amount_cents: number;
+      currency: string;
+      created_by: string;
+      created_at: string | number;
+    }>(
+      `select s.*, f.name as from_name, t.name as to_name from settlements s
+       join users f on f.id = s.from_user join users t on t.id = s.to_user
+       where s.group_id = $1 order by s.created_at desc, s.id`,
+      [groupId],
+    );
+    return rows.rows.map((r) => ({
+      id: r.id,
+      groupId,
+      fromUser: r.from_user,
+      fromName: r.from_name,
+      toUser: r.to_user,
+      toName: r.to_name,
+      amountCents: Number(r.amount_cents),
+      currency: r.currency,
+      createdBy: r.created_by,
+      createdAt: Number(r.created_at),
+    }));
+  }
+
+  app.get<{ Params: { id: string } }>('/api/groups/:id/settlements', async (request) => {
+    await membership(request.params.id, await requireUser(request));
+    return loadSettlements(request.params.id);
+  });
+
+  /** "Erledigt": hält fest, dass eine Überweisung stattgefunden hat. */
+  app.post<{ Params: { id: string } }>('/api/groups/:id/settlements', async (request, reply) => {
+    const userId = await requireUser(request);
+    await membership(request.params.id, userId);
+    const input = parse(settlementInputSchema, request.body);
+    const known = await db.query<{ id: string }>('select id from users where id = any($1::text[])', [
+      [input.fromUser, input.toUser],
+    ]);
+    if (known.rows.length !== 2) throw new HttpError(400, 'invalid_input', 'Unbekannte Person');
+    await db.query(
+      `insert into settlements (id, group_id, from_user, to_user, amount_cents, currency, created_by, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [newId(), request.params.id, input.fromUser, input.toUser, input.amountCents, input.currency.toUpperCase(), userId, now()],
+    );
+    reply.code(201);
+    return loadSettlements(request.params.id);
+  });
+
+  /** Versehentlich als erledigt markiert: rückgängig machen. */
+  app.delete<{ Params: { id: string } }>('/api/settlements/:id', async (request) => {
+    const userId = await requireUser(request);
+    const found = await db.query<{ group_id: string; from_user: string; to_user: string; created_by: string }>(
+      'select group_id, from_user, to_user, created_by from settlements where id = $1',
+      [request.params.id],
+    );
+    const settlement = found.rows[0];
+    if (settlement === undefined) throw new HttpError(404, 'not_found', 'Zahlung nicht gefunden');
+    const role = await membership(settlement.group_id, userId);
+    if (role !== 'admin' && ![settlement.from_user, settlement.to_user, settlement.created_by].includes(userId)) {
+      throw new HttpError(403, 'forbidden', 'Nur Beteiligte und Admins dürfen das');
+    }
+    await db.query('delete from settlements where id = $1', [request.params.id]);
+    return loadSettlements(settlement.group_id);
   });
 
   // Push-Benachrichtigungen ----------------------------------------------------

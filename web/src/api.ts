@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { ExpenseInput, Settlement, SettlementInput, RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -100,5 +100,12 @@ export const api = {
   comments: (eventId: string) => request<EventComment[]>('GET', `/api/events/${eventId}/comments`),
   addComment: (eventId: string, text: string) => request<EventComment[]>('POST', `/api/events/${eventId}/comments`, { text }),
   deleteComment: (id: string) => request<EventComment[]>('DELETE', `/api/comments/${id}`),
+  addExpense: (eventId: string, input: ExpenseInput) => request<RunEvent>('POST', `/api/events/${eventId}/expenses`, input),
+  updateExpense: (id: string, input: ExpenseInput) => request<RunEvent>('PUT', `/api/expenses/${id}`, input),
+  deleteExpense: (id: string) => request<RunEvent>('DELETE', `/api/expenses/${id}`),
+  settlements: (groupId: string) => request<Settlement[]>('GET', `/api/groups/${groupId}/settlements`),
+  addSettlement: (groupId: string, input: SettlementInput) =>
+    request<Settlement[]>('POST', `/api/groups/${groupId}/settlements`, input),
+  deleteSettlement: (id: string) => request<Settlement[]>('DELETE', `/api/settlements/${id}`),
   importFromUrl: (url: string, language: Language) => request<ImportResult>('POST', '/api/import', { url, language }),
 };

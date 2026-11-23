@@ -5,7 +5,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EventComment, EventInput, GroupDetail, ImportResult, Me, RunEvent } from '@runplanner/shared';
+import { settleUp, splitEqually, type EventComment, type EventInput, type GroupDetail, type ImportResult, type Me, type RunEvent, type Settlement } from '@runplanner/shared';
 import { buildApp } from './app.js';
 import type { Importer } from './importer.js';
 import { runDailyReminders, type PushMessage, type PushSender } from './push.js';
@@ -462,5 +462,68 @@ describe('Streckenverlauf', () => {
       races: b.body.races.map((r) => ({ id: r.id, name: r.name })),
     });
     expect(kept.body.races[1]!.track).not.toBe(null);
+  });
+});
+
+describe('Kosten teilen', () => {
+  it('erfasst Ausgaben, prüft Rechte und hält erledigte Zahlungen fest', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const carla = await register('carla@x.de', 'Carla', group.body.inviteCode);
+    const fremd = await register('fremd@x.de', 'Fremd');
+    const [a, b, c] = [anna.me.user.id, ben.me.user.id, carla.me.user.id];
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const id = created.body.id;
+    expect(created.body.expenses).toEqual([]);
+
+    const hut = { paidBy: a, description: 'Hütte', amountCents: 24000, shares: splitEqually(24000, [a, b, c]) };
+    const added = await call<RunEvent>('POST', `/api/events/${id}/expenses`, carla.token, hut);
+    expect(added.status).toBe(201);
+    const expense = added.body.expenses[0]!;
+    expect(expense).toMatchObject({ paidByName: 'Anna', description: 'Hütte', amountCents: 24000, currency: 'EUR', createdBy: c });
+    expect(expense.shares.map((s) => [s.userName, s.amountCents])).toEqual([
+      ['Anna', 8000],
+      ['Ben', 8000],
+      ['Carla', 8000],
+    ]);
+
+    // Ungültige Eingaben und Fremde.
+    expect((await call('POST', `/api/events/${id}/expenses`, anna.token, { ...hut, amountCents: 1 })).status).toBe(400);
+    expect(
+      (await call('POST', `/api/events/${id}/expenses`, anna.token, { ...hut, shares: [{ userId: fremd.me.user.id, amountCents: 24000 }] }))
+        .status,
+    ).toBe(400);
+    expect((await call('POST', `/api/events/${id}/expenses`, fremd.token, hut)).status).toBe(404);
+
+    // Ben hat weder bezahlt noch erfasst und ist kein Admin.
+    expect((await call('PUT', `/api/expenses/${expense.id}`, ben.token, hut)).status).toBe(403);
+    const edited = await call<RunEvent>('PUT', `/api/expenses/${expense.id}`, anna.token, {
+      ...hut,
+      shares: [
+        { userId: a, amountCents: 0 },
+        { userId: b, amountCents: 12000 },
+        { userId: c, amountCents: 12000 },
+      ],
+    });
+    // Anteile von 0 werden nicht gespeichert.
+    expect(edited.body.expenses[0]!.shares.map((s) => s.userName)).toEqual(['Ben', 'Carla']);
+
+    const settled = await call<Settlement[]>('POST', `/api/groups/${group.body.id}/settlements`, ben.token, {
+      fromUser: b,
+      toUser: a,
+      amountCents: 12000,
+      currency: 'EUR',
+    });
+    expect(settled.status).toBe(201);
+    const transfers = settleUp(edited.body.expenses, settled.body);
+    expect(transfers.map((t) => `${t.fromName}→${t.toName} ${t.amountCents}`)).toEqual(['Carla→Anna 12000']);
+
+    expect((await call('GET', `/api/groups/${group.body.id}/settlements`, fremd.token)).status).toBe(404);
+    expect((await call('DELETE', `/api/settlements/${settled.body[0]!.id}`, carla.token)).status).toBe(403);
+    expect((await call<Settlement[]>('DELETE', `/api/settlements/${settled.body[0]!.id}`, ben.token)).body).toEqual([]);
+
+    const removed = await call<RunEvent>('DELETE', `/api/expenses/${expense.id}`, carla.token);
+    expect(removed.body.expenses).toEqual([]);
   });
 });

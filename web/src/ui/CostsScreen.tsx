@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { costsPerPerson } from '@runplanner/shared';
 import { useI18n } from '../i18n/index.js';
 import { todayIso, useApp } from '../state.js';
+import { SettleUp } from './SettleUp.js';
 
 export function CostsScreen() {
   const { t, money } = useI18n();
@@ -15,6 +16,7 @@ export function CostsScreen() {
 
   return (
     <div className="stack">
+      <SettleUp />
       <div className="row between">
         <h2>{t.costs.title}</h2>
         <select aria-label={t.costs.year} value={year} onChange={(e) => setYear(e.target.value)}>
