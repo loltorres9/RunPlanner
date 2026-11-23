@@ -57,6 +57,12 @@ export const en: Messages = {
     nothingThisMonth: 'Nothing planned this month.',
   },
   list: {
+    justNow: 'just now',
+    sortDate: 'By date',
+    sortAdded: 'Recently added',
+    addedBy: 'by {name} · {ago}',
+    newBadge: 'New',
+    recentlyAdded: 'Recently added',
     upcoming: 'Upcoming',
     past: 'Past',
     empty: 'No events yet. Tap + to add the first one.',

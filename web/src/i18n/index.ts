@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Language } from '@runplanner/shared';
 import { de, type Messages } from './de.js';
+import { relativeAgo } from '../dates.js';
 import { en } from './en.js';
 
 export const messages: Record<Language, Messages> = { de, en };
@@ -23,6 +24,8 @@ export interface I18n {
   date: (day: string, options?: Intl.DateTimeFormatOptions) => string;
   money: (amount: number, currency: string) => string;
   number: (value: number, digits?: number) => string;
+  /** Zeitpunkt (ms) relativ zu jetzt, z. B. „vor 2 Tagen“. */
+  ago: (timestamp: number) => string;
 }
 
 export function makeI18n(lang: Language): I18n {
@@ -36,6 +39,11 @@ export function makeI18n(lang: Language): I18n {
     money: (amount, currency) =>
       new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount),
     number: (value, digits = 1) => new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value),
+    ago: (timestamp) => {
+      const { value, unit } = relativeAgo(Date.now() - timestamp);
+      if (value === 0) return messages[lang].list.justNow;
+      return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(value === 0 ? 0 : value, unit);
+    },
   };
 }
 

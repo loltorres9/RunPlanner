@@ -821,3 +821,9 @@ button.link {
 .night-overview .night:first-child {
   border-top: none;
 }
+.badge.new {
+  margin-left: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
+  vertical-align: middle;
+}
