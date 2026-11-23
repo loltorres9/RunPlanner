@@ -19,6 +19,8 @@ COPY shared/ shared/
 COPY server/ server/
 COPY web/ web/
 
+# Railway setzt diese Variable beim Bauen; sie landet als Kurz-Commit in der Versionsanzeige.
+ARG RAILWAY_GIT_COMMIT_SHA
 RUN npm run build -w shared \
  && npm run build -w web \
  && npm run build -w server

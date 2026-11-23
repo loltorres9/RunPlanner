@@ -10,3 +10,6 @@ Deployment auf Railway per Dockerfile.
 - Tage sind Strings `JJJJ-MM-TT`, Uhrzeiten `HH:MM`, keine Zeitzonen.
 - Bewusst keine Verbindung zu Google Kalender (Wunsch des Nutzers).
 - Prüfen: `npm run typecheck && npm test && npm run build`.
+- Version: bei jeder Änderung, die nach main geht, `version` in allen package.json erhöhen
+  (`npm version X.Y.Z --no-git-tag-version --workspaces --include-workspace-root`) und
+  `CHANGELOG.md` ergänzen. Die Version steht unten in den Einstellungen.

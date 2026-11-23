@@ -178,6 +178,7 @@ export const de = {
     you: 'du',
   },
   settings: {
+    version: 'Version {version}',
     title: 'Einstellungen',
     profile: 'Profil',
     language: 'Sprache',

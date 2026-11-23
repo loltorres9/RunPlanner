@@ -2,10 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { api, ApiError, setToken } from '../api.js';
 import { useI18n } from '../i18n/index.js';
 import { useApp } from '../state.js';
+import { APP_BUILT, APP_COMMIT, APP_VERSION } from '../version.js';
 import { LanguageSwitch } from './LanguageSwitch.js';
 
 export function SettingsScreen() {
-  const { t } = useI18n();
+  const { t, f, date } = useI18n();
   const { me, setMe, logout } = useApp();
   const [name, setName] = useState(me.user.name);
   const [message, setMessage] = useState<string | null>(null);
@@ -87,6 +88,11 @@ export function SettingsScreen() {
       <button type="button" className="danger" onClick={logout}>
         {t.settings.logout}
       </button>
+
+      <p className="muted small version">
+        {f(t.settings.version, { version: APP_VERSION })}
+        {APP_COMMIT && ` (${APP_COMMIT})`} · {date(APP_BUILT)}
+      </p>
     </div>
   );
 }

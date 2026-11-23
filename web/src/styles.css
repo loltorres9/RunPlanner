@@ -807,3 +807,4 @@ button.link {
   flex-wrap: wrap;
   gap: 6px;
 }
+.version { text-align: center; }
