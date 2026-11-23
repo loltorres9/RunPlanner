@@ -111,10 +111,10 @@ export function SettingsScreen() {
         {t.settings.logout}
       </button>
 
-      <p className="muted small version">
+      <a className="muted small version" href="#/changelog" title={t.settings.changelog}>
         {f(t.settings.version, { version: APP_VERSION })}
-        {APP_COMMIT && ` (${APP_COMMIT})`} · {date(APP_BUILT)}
-      </p>
+        {APP_COMMIT && ` (${APP_COMMIT})`} · {date(APP_BUILT)} · {t.settings.changelog}
+      </a>
     </div>
   );
 }

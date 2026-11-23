@@ -12,4 +12,5 @@ Deployment auf Railway per Dockerfile.
 - Prüfen: `npm run typecheck && npm test && npm run build`.
 - Version: bei jeder Änderung, die nach main geht, `version` in allen package.json erhöhen
   (`npm version X.Y.Z --no-git-tag-version --workspaces --include-workspace-root`) und
-  `CHANGELOG.md` ergänzen. Die Version steht unten in den Einstellungen.
+  oben in `web/src/changelog.ts` einen Eintrag auf Deutsch und Englisch ergänzen (ein Test
+  prüft das). Die Version steht unten in den Einstellungen; ein Tipp darauf öffnet „Neuigkeiten“.
