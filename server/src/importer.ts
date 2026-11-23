@@ -301,6 +301,11 @@ export function toDraft(extracted: ExtractedEvent, url: string): ImportResult {
   });
   let endDate = cleanDate(extracted.endDate);
   if (endDate !== null && (startDate === null || endDate <= startDate)) endDate = null;
+  // Starttage nur innerhalb der Veranstaltung und nur bei mehreren Tagen.
+  for (const race of races) {
+    const inside = startDate !== null && endDate !== null && race.startDate && race.startDate >= startDate && race.startDate <= endDate;
+    if (!inside) race.startDate = null;
+  }
   const currency = extracted.currency !== null && /^[A-Z]{3}$/.test(extracted.currency) ? extracted.currency : 'EUR';
 
   const draft: EventInput = {

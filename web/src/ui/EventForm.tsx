@@ -3,6 +3,8 @@ import type { EventInput, RaceInput } from '@runplanner/shared';
 import { api, ApiError } from '../api.js';
 import { useI18n } from '../i18n/index.js';
 import { navigate, useApp } from '../state.js';
+import { daysBetween } from '../dates.js';
+import { DateField } from './DatePicker.js';
 import { eventToInput } from './EventDetail.js';
 import { Icon } from './Icon.js';
 
@@ -19,6 +21,8 @@ interface RaceDraft {
   fee: string;
   feeNote: string;
   cutoff: string;
+  /** Starttag fiel durch eine Änderung des Zeitraums heraus und wurde geleert. */
+  dayCleared: boolean;
 }
 
 interface Draft {
@@ -70,10 +74,22 @@ function raceToDraft(race: RaceInput): RaceDraft {
     fee: str(race.fee),
     feeNote: str(race.feeNote),
     cutoff: str(race.cutoff),
+    dayCleared: false,
   };
 }
 
 const emptyRace = (): RaceDraft => raceToDraft({ name: '' });
+
+/** Neuer Zeitraum: Starttage außerhalb leeren und die Strecke markieren. */
+function withRange(draft: Draft, startDate: string, endDate: string): Draft {
+  const races = draft.races.map((r) => {
+    if (!r.startDate) return r;
+    if (!endDate) return { ...r, startDate: '', dayCleared: false };
+    const inside = r.startDate >= startDate && r.startDate <= endDate;
+    return inside ? r : { ...r, startDate: '', dayCleared: true };
+  });
+  return { ...draft, startDate, endDate, races };
+}
 
 function num(value: string): number | null {
   const cleaned = value.replace(',', '.').trim();
@@ -108,7 +124,8 @@ function fromDraft(draft: Draft): EventInput {
         distanceKm: num(r.distanceKm),
         elevationUpM: int(r.elevationUpM),
         elevationDownM: int(r.elevationDownM),
-        startDate: r.startDate || null,
+        // Eintägig: kein eigener Starttag, es gilt der Veranstaltungstag.
+        startDate: draft.endDate && r.startDate ? r.startDate : null,
         startTime: r.startTime || null,
         fee: num(r.fee),
         feeNote: r.feeNote || null,
@@ -120,12 +137,13 @@ function fromDraft(draft: Draft): EventInput {
 const blank: Draft = toDraft({ name: '', startDate: '', currency: 'EUR', races: [] });
 
 export function EventForm(props: { eventId?: string }) {
-  const { t, lang } = useI18n();
+  const { t, lang, date } = useI18n();
   const { events, groupId, putEvent, importEnabled } = useApp();
   const existing = props.eventId ? events.find((e) => e.id === props.eventId) : undefined;
   const [draft, setDraft] = useState<Draft>(() => (existing ? toDraft(eventToInput(existing)) : { ...blank, races: [emptyRace()] }));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dateMissing, setDateMissing] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importState, setImportState] = useState<{ busy: boolean; message: string | null; warnings: string[] }>({
     busy: false,
@@ -159,6 +177,11 @@ export function EventForm(props: { eventId?: string }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!draft.startDate) {
+      setDateMissing(true);
+      setError(t.event.dateRequired);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -228,25 +251,28 @@ export function EventForm(props: { eventId?: string }) {
           {t.event.location}
           <input value={draft.location} onChange={(e) => set('location', e.target.value)} maxLength={200} />
         </label>
-        <div className="grid2">
-          <label>
-            {t.event.startDate}
-            <input type="date" value={draft.startDate} onChange={(e) => set('startDate', e.target.value)} required />
-          </label>
-          <label>
-            {t.event.endDate}
-            <input type="date" value={draft.endDate} min={draft.startDate || undefined} onChange={(e) => set('endDate', e.target.value)} />
-          </label>
-        </div>
+        <DateField
+          mode="range"
+          label={t.event.startDate}
+          start={draft.startDate}
+          end={draft.endDate}
+          invalid={dateMissing}
+          onChange={(start, end) => {
+            setDateMissing(false);
+            setDraft((d) => withRange(d, start, end));
+          }}
+        />
         <label>
           {t.event.website}
           <input type="url" value={draft.website} placeholder="https://" onChange={(e) => set('website', e.target.value)} />
         </label>
+        <DateField
+          mode="single"
+          label={t.event.registrationDeadline}
+          value={draft.registrationDeadline}
+          onChange={(value) => set('registrationDeadline', value)}
+        />
         <div className="grid2">
-          <label>
-            {t.event.registrationDeadline}
-            <input type="date" value={draft.registrationDeadline} onChange={(e) => set('registrationDeadline', e.target.value)} />
-          </label>
           <label>
             {t.event.currency}
             <select value={draft.currency} onChange={(e) => set('currency', e.target.value)}>
@@ -312,19 +338,28 @@ export function EventForm(props: { eventId?: string }) {
               <input inputMode="numeric" value={race.elevationDownM} onChange={(e) => setRace(race.key, { elevationDownM: e.target.value })} />
             </label>
           </div>
+          {draft.endDate && (
+            <div className="race-day">
+              <span className="field-label">{t.event.raceDate}</span>
+              <div className="day-chips" role="group" aria-label={t.event.raceDate}>
+                {daysBetween(draft.startDate, draft.endDate).map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    className={race.startDate === day ? 'chip-button active' : 'chip-button'}
+                    aria-pressed={race.startDate === day}
+                    onClick={() =>
+                      setRace(race.key, { startDate: race.startDate === day ? '' : day, dayCleared: false })
+                    }
+                  >
+                    {date(day, { weekday: 'short', day: 'numeric' })}
+                  </button>
+                ))}
+              </div>
+              {race.dayCleared && <small className="warn-text">{t.event.raceDayCleared}</small>}
+            </div>
+          )}
           <div className="grid3">
-            {draft.endDate && (
-              <label>
-                {t.event.raceDate}
-                <input
-                  type="date"
-                  value={race.startDate}
-                  min={draft.startDate}
-                  max={draft.endDate}
-                  onChange={(e) => setRace(race.key, { startDate: e.target.value })}
-                />
-              </label>
-            )}
             <label>
               {t.event.startTime}
               <input type="time" value={race.startTime} onChange={(e) => setRace(race.key, { startTime: e.target.value })} />

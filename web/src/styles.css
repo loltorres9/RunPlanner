@@ -678,3 +678,102 @@ button.link {
     display: none;
   }
 }
+
+/* Datumsfelder ---------------------------------------------------------------- */
+
+.field-label {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.date-field .row > .date-button {
+  flex: 1;
+}
+.date-button {
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  white-space: normal;
+  text-align: left;
+  font-size: 1rem;
+}
+.date-button.invalid {
+  border-color: var(--danger);
+}
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 45%);
+}
+.dialog {
+  width: 100%;
+  max-width: 380px;
+  outline: none;
+}
+.capitalize {
+  text-transform: capitalize;
+}
+.center-text {
+  text-align: center;
+}
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  row-gap: 4px;
+}
+.pick-day {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 0.95rem;
+}
+.pick-day.other {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.pick-day.today {
+  font-weight: 700;
+  color: var(--accent);
+}
+.pick-day.in-range {
+  background: var(--ok-bg);
+  color: var(--text);
+}
+.pick-day.range-start {
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+}
+.pick-day.range-end {
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+}
+.pick-day.range-start,
+.pick-day.range-end {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip-button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+.chip-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}

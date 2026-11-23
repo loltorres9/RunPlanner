@@ -183,6 +183,12 @@ describe('Veranstaltungen', () => {
       races: [{ name: 'X', startTime: '25:00' }],
     });
     expect(badTime.status).toBe(400);
+    const outside = await call<{ message: string }>('POST', `/api/groups/${groupId}/events`, anna.token, {
+      ...sampleEvent,
+      races: [{ name: 'X', startDate: '2027-05-03' }],
+    });
+    expect(outside.status).toBe(400);
+    expect(outside.body.message).toContain('außerhalb');
   });
 
   it('erlaubt Löschen nur Ersteller und Admins', async () => {

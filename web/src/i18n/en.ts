@@ -103,6 +103,12 @@ export const en: Messages = {
     nobody: 'Nobody yet',
     myStatus: 'Me',
     days: '{count} days',
+    pickDate: 'Choose date',
+    pickStart: 'Tap the first day',
+    pickEnd: 'Now tap the last day. Same day again = single-day event.',
+    clearDate: 'Clear date',
+    dateRequired: 'Please choose a date',
+    raceDayCleared: 'Race day was outside the new dates, please choose again',
   },
   status: {
     none: 'Not in',

@@ -101,6 +101,12 @@ export const de = {
     nobody: 'Noch niemand',
     myStatus: 'Ich',
     days: '{count} Tage',
+    pickDate: 'Datum wählen',
+    pickStart: 'Ersten Tag antippen',
+    pickEnd: 'Jetzt den letzten Tag antippen. Derselbe Tag nochmal = eintägig.',
+    clearDate: 'Datum entfernen',
+    dateRequired: 'Bitte ein Datum wählen',
+    raceDayCleared: 'Starttag lag nicht mehr im Zeitraum, bitte neu wählen',
   },
   status: {
     none: 'Nicht dabei',
