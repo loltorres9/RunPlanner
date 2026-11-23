@@ -14,7 +14,6 @@ function event(overrides: Partial<RunEvent>): RunEvent {
     registrationDeadline: null,
     currency: 'EUR',
     accommodationNeeded: false,
-    accommodationBooked: false,
     accommodationNotes: null,
     notes: null,
     createdBy: 'u1',
@@ -22,6 +21,8 @@ function event(overrides: Partial<RunEvent>): RunEvent {
     createdAt: 0,
     updatedAt: 0,
     races: [],
+    accommodations: [],
+    stays: [],
     ...overrides,
   };
 }
@@ -78,6 +79,11 @@ describe('eventTodos', () => {
     });
     expect(eventTodos(e, '2027-04-01')).toEqual(['accommodation', 'deadlineSoon']);
     expect(eventTodos(e, '2027-04-11')).toEqual(['accommodation', 'deadlinePassed']);
-    expect(eventTodos({ ...e, accommodationBooked: true }, '2027-01-01')).toEqual([]);
+    const booked = { ...e, stays: [{ userId: 'a', userName: 'Anna', choice: 'other' as const, accommodationId: null, otherText: 'Oma', booked: true }] };
+    expect(eventTodos(booked, '2027-01-01')).toEqual([]);
+    const unbooked = { ...e, stays: [{ ...booked.stays[0]!, booked: false }] };
+    expect(eventTodos(unbooked, '2027-01-01')).toEqual(['accommodation']);
+    const none = { ...e, stays: [{ ...booked.stays[0]!, choice: 'none' as const, booked: false }] };
+    expect(eventTodos(none, '2027-01-01')).toEqual([]);
   });
 });

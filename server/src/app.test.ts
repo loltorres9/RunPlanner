@@ -156,11 +156,9 @@ describe('Veranstaltungen', () => {
     // Anna bearbeitet: Ultra bleibt (mit ID), "Kurz" fällt weg, eine neue Strecke kommt dazu.
     const updated = await call<RunEvent>('PUT', `/api/events/${created.body.id}`, anna.token, {
       ...sampleEvent,
-      accommodationBooked: true,
       races: [{ ...sampleEvent.races![0], id: ultra.id, fee: 99 }, { name: 'Mini', distanceKm: 10 }],
     });
     expect(updated.status).toBe(200);
-    expect(updated.body.accommodationBooked).toBe(true);
     expect(updated.body.races.map((r) => r.name)).toEqual(['Ultra', 'Mini']);
     expect(updated.body.races[0]!.fee).toBe(99);
     expect(updated.body.races[0]!.participants).toHaveLength(1);
@@ -198,6 +196,51 @@ describe('Veranstaltungen', () => {
     const byBen = await call<RunEvent>('POST', `/api/groups/${groupId}/events`, ben.token, sampleEvent);
     expect((await call('DELETE', `/api/events/${byBen.body.id}`, anna.token)).status).toBe(204);
     expect((await call('DELETE', `/api/events/${byAnna.body.id}`, anna.token)).status).toBe(204);
+  });
+});
+
+describe('Unterkünfte', () => {
+  it('schlägt Unterkünfte vor und merkt sich, wer wo schläft', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const eventId = created.body.id;
+
+    const withHotel = await call<RunEvent>('POST', `/api/events/${eventId}/accommodations`, ben.token, {
+      name: 'Hotel Post',
+      url: 'https://hotel.example',
+      price: 'ca. 90 € / Nacht',
+    });
+    expect(withHotel.status).toBe(201);
+    const hotel = withHotel.body.accommodations[0]!;
+    expect(hotel).toMatchObject({ name: 'Hotel Post', price: 'ca. 90 € / Nacht' });
+
+    const annaStay = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, anna.token, {
+      choice: 'suggested',
+      accommodationId: hotel.id,
+      booked: true,
+    });
+    expect(annaStay.body.stays).toEqual([
+      { userId: anna.me.user.id, userName: 'Anna', choice: 'suggested', accommodationId: hotel.id, otherText: null, booked: true },
+    ]);
+    const benStay = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, ben.token, { choice: 'other', otherText: 'Bei Oma' });
+    expect(benStay.body.stays.find((s) => s.userId === ben.me.user.id)).toMatchObject({ choice: 'other', otherText: 'Bei Oma', booked: false });
+
+    // Ohne Auswahl einer Unterkunft geht "suggested" nicht.
+    expect((await call('PUT', `/api/events/${eventId}/stay`, ben.token, { choice: 'suggested' })).status).toBe(400);
+
+    // Löschen der Unterkunft nimmt Annas Wahl mit.
+    const deleted = await call<RunEvent>('DELETE', `/api/accommodations/${hotel.id}`, ben.token);
+    expect(deleted.body.accommodations).toHaveLength(0);
+    expect(deleted.body.stays.map((s) => s.userName)).toEqual(['Ben']);
+
+    const reset = await call<RunEvent>('PUT', `/api/events/${eventId}/stay`, ben.token, { choice: null });
+    expect(reset.body.stays).toHaveLength(0);
+
+    // Fremde sehen nichts.
+    const fremd = await register('fremd@x.de', 'Fremd');
+    expect((await call('POST', `/api/events/${eventId}/accommodations`, fremd.token, { name: 'X' })).status).toBe(404);
   });
 });
 

@@ -62,7 +62,6 @@ export const eventInputSchema = z
     registrationDeadline: isoDate.nullish(),
     currency: z.string().trim().length(3).default('EUR'),
     accommodationNeeded: z.boolean().default(false),
-    accommodationBooked: z.boolean().default(false),
     accommodationNotes: optionalText(2000),
     notes: optionalText(5000),
     races: z.array(raceInputSchema).max(30).default([]),
@@ -117,7 +116,6 @@ export interface RunEvent {
   registrationDeadline: string | null;
   currency: string;
   accommodationNeeded: boolean;
-  accommodationBooked: boolean;
   accommodationNotes: string | null;
   notes: string | null;
   createdBy: string;
@@ -125,6 +123,59 @@ export interface RunEvent {
   createdAt: number;
   updatedAt: number;
   races: Race[];
+  /** Vorgeschlagene Unterkünfte. */
+  accommodations: Accommodation[];
+  /** Wer wo übernachtet. */
+  stays: Stay[];
+}
+
+export const STAY_CHOICES = ['none', 'suggested', 'other'] as const;
+export type StayChoice = (typeof STAY_CHOICES)[number];
+
+export const accommodationInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  url: z
+    .string()
+    .trim()
+    .max(500)
+    .nullish()
+    .transform((value) => (value === undefined || value === null || value === '' ? null : value))
+    .refine((value) => value === null || /^https?:\/\//i.test(value), 'Link muss mit http(s):// beginnen'),
+  /** Freitext, z. B. "ca. 90 € pro Nacht". */
+  price: optionalText(120),
+  notes: optionalText(1000),
+});
+export type AccommodationInput = z.input<typeof accommodationInputSchema>;
+
+export const stayInputSchema = z
+  .object({
+    choice: z.enum(STAY_CHOICES),
+    accommodationId: z.string().nullish(),
+    otherText: optionalText(300),
+    booked: z.boolean().default(false),
+  })
+  .refine((stay) => stay.choice !== 'suggested' || !!stay.accommodationId, {
+    message: 'Bitte eine Unterkunft wählen',
+    path: ['accommodationId'],
+  });
+export type StayInput = z.input<typeof stayInputSchema>;
+
+export interface Accommodation {
+  id: string;
+  name: string;
+  url: string | null;
+  price: string | null;
+  notes: string | null;
+  createdBy: string;
+}
+
+export interface Stay {
+  userId: string;
+  userName: string;
+  choice: StayChoice;
+  accommodationId: string | null;
+  otherText: string | null;
+  booked: boolean;
 }
 
 export interface User {

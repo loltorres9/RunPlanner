@@ -1,4 +1,4 @@
-import { eventTodos, type RunEvent } from '@runplanner/shared';
+import { eventPeople, eventTodos, type RunEvent } from '@runplanner/shared';
 import { useI18n } from '../i18n/index.js';
 import { todayIso } from '../state.js';
 import { Icon } from './Icon.js';
@@ -15,13 +15,6 @@ export function eventColor(id: string): string {
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase();
-}
-
-/** Alle Personen, die bei irgendeiner Strecke eingetragen sind. */
-export function eventPeople(event: RunEvent): { userId: string; userName: string }[] {
-  const seen = new Map<string, string>();
-  for (const race of event.races) for (const p of race.participants) seen.set(p.userId, p.userName);
-  return [...seen].map(([userId, userName]) => ({ userId, userName }));
 }
 
 export function EventCard(props: { event: RunEvent }) {

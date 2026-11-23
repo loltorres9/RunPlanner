@@ -102,6 +102,33 @@ create table if not exists participations (
   updated_at bigint not null,
   primary key (race_id, user_id)
 );
+
+-- Vorgeschlagene Unterkünfte einer Veranstaltung.
+create table if not exists accommodations (
+  id text primary key,
+  event_id text not null references events(id) on delete cascade,
+  name text not null,
+  url text,
+  price text,
+  notes text,
+  created_by text not null references users(id),
+  created_at bigint not null
+);
+
+create index if not exists accommodations_event_idx on accommodations (event_id);
+
+-- Wer wo übernachtet. Wird eine vorgeschlagene Unterkunft gelöscht, entfällt auch die
+-- Wahl derer, die dort schlafen wollten; sie tauchen dann wieder als offen auf.
+create table if not exists stays (
+  event_id text not null references events(id) on delete cascade,
+  user_id text not null references users(id) on delete cascade,
+  choice text not null check (choice in ('none', 'suggested', 'other')),
+  accommodation_id text references accommodations(id) on delete cascade,
+  other_text text,
+  booked boolean not null default false,
+  updated_at bigint not null,
+  primary key (event_id, user_id)
+);
 `;
 
 export async function migrate(db: Db): Promise<void> {

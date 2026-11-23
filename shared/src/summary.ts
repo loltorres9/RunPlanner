@@ -61,7 +61,7 @@ export type EventTodo = 'accommodation' | 'deadlineSoon' | 'deadlinePassed';
 
 export function eventTodos(event: RunEvent, today: string, soonDays = 14): EventTodo[] {
   const todos: EventTodo[] = [];
-  if (event.accommodationNeeded && !event.accommodationBooked && lastDay(event) >= today) {
+  if (event.accommodationNeeded && lastDay(event) >= today && openStays(event).length > 0) {
     todos.push('accommodation');
   }
   const deadline = event.registrationDeadline;
@@ -73,6 +73,29 @@ export function eventTodos(event: RunEvent, today: string, soonDays = 14): Event
     else if (deadline <= addDays(today, soonDays)) todos.push('deadlineSoon');
   }
   return todos;
+}
+
+/** Alle Personen, die bei irgendeiner Strecke eingetragen sind. */
+export function eventPeople(event: RunEvent): { userId: string; userName: string }[] {
+  const seen = new Map<string, string>();
+  for (const race of event.races) for (const p of race.participants) seen.set(p.userId, p.userName);
+  return [...seen].map(([userId, userName]) => ({ userId, userName }));
+}
+
+/**
+ * Wer bei der Unterkunft noch etwas tun muss: Teilnehmende ohne Wahl, und alle, die
+ * eine Unterkunft gewählt, aber noch nicht gebucht haben.
+ */
+export function openStays(event: RunEvent): { userId: string; userName: string; reason: 'undecided' | 'unbooked' }[] {
+  const open: { userId: string; userName: string; reason: 'undecided' | 'unbooked' }[] = [];
+  const byUser = new Map(event.stays.map((s) => [s.userId, s]));
+  for (const person of eventPeople(event)) {
+    if (!byUser.has(person.userId)) open.push({ ...person, reason: 'undecided' });
+  }
+  for (const stay of event.stays) {
+    if (stay.choice !== 'none' && !stay.booked) open.push({ userId: stay.userId, userName: stay.userName, reason: 'unbooked' });
+  }
+  return open;
 }
 
 export function addDays(day: string, days: number): string {

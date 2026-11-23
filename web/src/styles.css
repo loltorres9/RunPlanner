@@ -559,16 +559,6 @@ button.link {
 .facts a {
   text-decoration: none;
 }
-.accommodation {
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-.accommodation.open {
-  background: var(--warn-bg);
-}
-.accommodation.ok {
-  background: var(--ok-bg);
-}
 .race .fee {
   font-weight: 700;
 }
@@ -776,4 +766,44 @@ button.link {
   border-color: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
+}
+
+/* Unterkünfte ----------------------------------------------------------------- */
+
+.stays h3 {
+  margin-top: 4px;
+}
+.suggestion {
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.suggestion a {
+  text-decoration: none;
+}
+.my-stay {
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ok-bg);
+}
+.my-stay.open {
+  background: var(--warn-bg);
+}
+.guest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.guest-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }

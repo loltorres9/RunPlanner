@@ -318,7 +318,6 @@ export function toDraft(extracted: ExtractedEvent, url: string): ImportResult {
     registrationDeadline: cleanDate(extracted.registrationDeadline),
     currency,
     accommodationNeeded: false,
-    accommodationBooked: false,
     races,
   };
   return { draft, warnings };
