@@ -11,6 +11,7 @@ import {
   accommodationInputSchema,
   eventInputSchema,
   eventNights,
+  trackInputSchema,
   commentInputSchema,
   type EventComment,
   notificationSettingsSchema,
@@ -384,6 +385,26 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       commentStats.rows.map((c) => [c.event_id, { count: Number(c.count), lastAt: Number(c.last_at), lastBy: c.last_by }]),
     );
 
+    const tracks = await db.query<{
+      race_id: string;
+      name: string | null;
+      distance_km: number;
+      gain_m: number | null;
+      loss_m: number | null;
+      min_ele: number | null;
+      max_ele: number | null;
+    }>(
+      `select race_id, name, distance_km, gain_m, loss_m, min_ele, max_ele from race_tracks
+       where race_id = any($1::text[])`,
+      [raceIds],
+    );
+    const trackByRace = new Map(
+      tracks.rows.map((t) => [
+        t.race_id,
+        { name: t.name, distanceKm: Number(t.distance_km), gainM: t.gain_m, lossM: t.loss_m, minEle: t.min_ele, maxEle: t.max_ele },
+      ]),
+    );
+
     const byEvent = new Map<string, Race[]>();
     for (const r of races.rows) {
       const list = byEvent.get(r.event_id) ?? [];
@@ -399,6 +420,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         feeNote: r.fee_note,
         cutoff: r.cutoff,
         participants: byRace.get(r.id) ?? [],
+        track: trackByRace.get(r.id) ?? null,
       });
       byEvent.set(r.event_id, list);
     }
@@ -837,16 +859,22 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.code(204).send();
   });
 
-  app.put<{ Params: { id: string } }>('/api/races/:id/participation', async (request) => {
-    const userId = await requireUser(request);
-    const input = parse(participationSchema, request.body);
+  /** Veranstaltung einer Strecke, sofern sie in einer eigenen Gruppe liegt. */
+  async function raceEvent(raceId: string, userId: string): Promise<string> {
     const found = await db.query<{ event_id: string }>(
       `select r.event_id from races r join events e on e.id = r.event_id
        join memberships m on m.group_id = e.group_id and m.user_id = $2 where r.id = $1`,
-      [request.params.id, userId],
+      [raceId, userId],
     );
     const eventId = found.rows[0]?.event_id;
     if (eventId === undefined) throw new HttpError(404, 'not_found', 'Strecke nicht gefunden');
+    return eventId;
+  }
+
+  app.put<{ Params: { id: string } }>('/api/races/:id/participation', async (request) => {
+    const userId = await requireUser(request);
+    const input = parse(participationSchema, request.body);
+    const eventId = await raceEvent(request.params.id, userId);
     if (input.status === null) {
       await db.query('delete from participations where race_id = $1 and user_id = $2', [request.params.id, userId]);
     } else {
@@ -856,6 +884,80 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         [request.params.id, userId, input.status, now()],
       );
     }
+    return loadEvent(eventId, userId);
+  });
+
+  // Streckenverlauf -------------------------------------------------------------
+
+  app.get<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {
+    const userId = await requireUser(request);
+    await raceEvent(request.params.id, userId);
+    const found = await db.query<{ name: string | null; points: string; distance_km: number; gain_m: number | null; loss_m: number | null; min_ele: number | null; max_ele: number | null }>(
+      'select * from race_tracks where race_id = $1',
+      [request.params.id],
+    );
+    const t = found.rows[0];
+    if (t === undefined) throw new HttpError(404, 'not_found', 'Kein Streckenverlauf hinterlegt');
+    return {
+      name: t.name,
+      points: JSON.parse(t.points) as unknown,
+      distanceKm: Number(t.distance_km),
+      gainM: t.gain_m,
+      lossM: t.loss_m,
+      minEle: t.min_ele,
+      maxEle: t.max_ele,
+    };
+  });
+
+  /**
+   * GPX-Verlauf hinterlegen (im Browser eingelesen und ausgedünnt). Fehlen bei der
+   * Strecke Distanz oder Höhenmeter, werden sie aus dem Verlauf übernommen.
+   */
+  app.put<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {
+    const userId = await requireUser(request);
+    const eventId = await raceEvent(request.params.id, userId);
+    const input = parse(trackInputSchema, request.body);
+    const km = Math.round(input.distanceKm * 10) / 10;
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `insert into race_tracks (race_id, name, points, distance_km, gain_m, loss_m, min_ele, max_ele, uploaded_by, uploaded_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         on conflict (race_id) do update set name = excluded.name, points = excluded.points,
+           distance_km = excluded.distance_km, gain_m = excluded.gain_m, loss_m = excluded.loss_m,
+           min_ele = excluded.min_ele, max_ele = excluded.max_ele, uploaded_by = excluded.uploaded_by,
+           uploaded_at = excluded.uploaded_at`,
+        [
+          request.params.id,
+          input.name,
+          JSON.stringify(input.points),
+          input.distanceKm,
+          input.gainM === null ? null : Math.round(input.gainM),
+          input.lossM === null ? null : Math.round(input.lossM),
+          input.minEle === null ? null : Math.round(input.minEle),
+          input.maxEle === null ? null : Math.round(input.maxEle),
+          userId,
+          now(),
+        ],
+      );
+      await tx.query(
+        `update races set distance_km = coalesce(distance_km, $2),
+           elevation_up_m = coalesce(elevation_up_m, $3), elevation_down_m = coalesce(elevation_down_m, $4)
+         where id = $1`,
+        [
+          request.params.id,
+          km,
+          input.gainM === null ? null : Math.round(input.gainM),
+          input.lossM === null ? null : Math.round(input.lossM),
+        ],
+      );
+    });
+    return loadEvent(eventId, userId);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {
+    const userId = await requireUser(request);
+    const eventId = await raceEvent(request.params.id, userId);
+    await db.query('delete from race_tracks where race_id = $1', [request.params.id]);
     return loadEvent(eventId, userId);
   });
 

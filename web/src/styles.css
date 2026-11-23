@@ -945,3 +945,37 @@ a.version {
   background: var(--accent);
   color: var(--accent-text);
 }
+.route-map {
+  height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  z-index: 0;
+}
+.track-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.profile {
+  margin: 0;
+}
+.profile svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.profile-area {
+  fill: var(--ok-bg);
+}
+.profile-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.profile-label {
+  font-size: 11px;
+  fill: var(--muted);
+}

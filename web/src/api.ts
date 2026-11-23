@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -94,6 +94,9 @@ export const api = {
   setStay: (eventId: string, input: StayInput | { night?: string | null; choice: null }) =>
     request<RunEvent>('PUT', `/api/events/${eventId}/stay`, input),
   setStayMode: (eventId: string, perNight: boolean) => request<RunEvent>('PUT', `/api/events/${eventId}/stay-mode`, { perNight }),
+  track: (raceId: string) => request<RaceTrack>('GET', `/api/races/${raceId}/track`),
+  setTrack: (raceId: string, input: TrackInput) => request<RunEvent>('PUT', `/api/races/${raceId}/track`, input),
+  deleteTrack: (raceId: string) => request<RunEvent>('DELETE', `/api/races/${raceId}/track`),
   comments: (eventId: string) => request<EventComment[]>('GET', `/api/events/${eventId}/comments`),
   addComment: (eventId: string, text: string) => request<EventComment[]>('POST', `/api/events/${eventId}/comments`, { text }),
   deleteComment: (id: string) => request<EventComment[]>('DELETE', `/api/comments/${id}`),

@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.12.0',
+    date: '2026-11-23',
+    de: [
+      'Streckenkarte: Pro Strecke eine GPX-Datei hochladen, dann gibt es eine Karte mit dem Verlauf und ein Höhenprofil.',
+      'Fehlen bei der Strecke Distanz oder Höhenmeter, werden sie aus der GPX-Datei übernommen.',
+    ],
+    en: [
+      'Route map: upload a GPX file per race to get a map of the route and an elevation profile.',
+      'If distance or elevation are missing for the race, they are taken from the GPX file.',
+    ],
+  },
+  {
     version: '0.11.0',
     date: '2026-11-23',
     de: [
