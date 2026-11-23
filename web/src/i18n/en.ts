@@ -205,6 +205,8 @@ export const en: Messages = {
     toLogin: 'Go to sign in',
   },
   settings: {
+    changelog: "What's new",
+    current: 'current',
     theme: 'Appearance',
     themes: { system: 'Like device', light: 'Light', dark: 'Dark' },
     version: 'Version {version}',

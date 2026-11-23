@@ -4,6 +4,7 @@ import { api, getToken, setToken, setUnauthorizedHandler } from './api.js';
 import { detectLanguage, I18nContext, makeI18n } from './i18n/index.js';
 import { AppContext, navigate, storedGroupId, storeGroupId, useRoute, type AppState } from './state.js';
 import { AuthScreen } from './ui/AuthScreen.js';
+import { ChangelogScreen } from './ui/ChangelogScreen.js';
 import { CalendarScreen } from './ui/CalendarScreen.js';
 import { CostsScreen } from './ui/CostsScreen.js';
 import { EventDetail } from './ui/EventDetail.js';
@@ -186,6 +187,10 @@ function SignedIn(props: { me: Me; setMe: (me: Me) => void; logout: () => void; 
   else if (page === 'costs') screen = <CostsScreen />;
   else if (page === 'group') screen = <GroupScreen />;
   else if (page === 'settings') screen = <SettingsScreen />;
+  else if (page === 'changelog') {
+    screen = <ChangelogScreen />;
+    tab = 'settings';
+  }
   else if (page === 'add-group') {
     return (
       <Onboarding
