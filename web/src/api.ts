@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { ExpenseInput, Settlement, SettlementInput, RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { GpxApplyInput, GpxSearchResult, ExpenseInput, Settlement, SettlementInput, RaceTrack, TrackInput, EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -107,5 +107,7 @@ export const api = {
   addSettlement: (groupId: string, input: SettlementInput) =>
     request<Settlement[]>('POST', `/api/groups/${groupId}/settlements`, input),
   deleteSettlement: (id: string) => request<Settlement[]>('DELETE', `/api/settlements/${id}`),
+  gpxSearch: (eventId: string) => request<GpxSearchResult>('POST', `/api/events/${eventId}/gpx-search`),
+  gpxApply: (eventId: string, input: GpxApplyInput) => request<RunEvent>('POST', `/api/events/${eventId}/gpx-apply`, input),
   importFromUrl: (url: string, language: Language) => request<ImportResult>('POST', '/api/import', { url, language }),
 };

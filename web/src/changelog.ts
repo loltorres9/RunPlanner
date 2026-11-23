@@ -14,6 +14,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.14.0',
+    date: '2026-11-23',
+    de: [
+      'GPX-Suche: „GPX von der Website suchen“ auf der Event-Seite durchsucht die Website der Veranstaltung nach GPX-Dateien und ordnet sie per KI den Strecken zu. Übernommen wird erst nach deiner Bestätigung.',
+      'Nach dem Import eines neuen Events startet die Suche automatisch.',
+      'Strecken bei Komoot, Strava & Co. werden als Link angezeigt, weil sie eine Anmeldung brauchen.',
+    ],
+    en: [
+      'GPX search: “Find GPX on the website” on the event page searches the event’s website for GPX files and matches them to the races using AI. Nothing is saved until you confirm.',
+      'After importing a new event, the search starts automatically.',
+      'Routes on Komoot, Strava & co. are shown as links, since they require a login.',
+    ],
+  },
+  {
     version: '0.13.0',
     date: '2026-11-23',
     de: [

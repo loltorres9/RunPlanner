@@ -7,6 +7,7 @@ import { eventColor, initials } from './EventCard.js';
 import { Icon } from './Icon.js';
 import { CommentsSection } from './CommentsSection.js';
 import { ExpensesSection } from './ExpensesSection.js';
+import { GpxSearch } from './GpxSearch.js';
 import { RaceTrackPanel } from './RaceTrackPanel.js';
 import { StaysSection } from './StaysSection.js';
 
@@ -118,6 +119,7 @@ export function EventDetail(props: { eventId: string }) {
 
       <h2>{t.event.races}</h2>
       {event.races.length === 0 && <p className="muted">{t.event.noRaces}</p>}
+      <GpxSearch event={event} />
       {event.races.map((race) => (
         <RaceCard
           key={race.id}

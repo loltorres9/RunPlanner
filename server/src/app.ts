@@ -12,6 +12,10 @@ import {
   eventInputSchema,
   eventNights,
   trackInputSchema,
+  gpxApplySchema,
+  matchByDistance,
+  type GpxSearchResult,
+  type TrackInput,
   commentInputSchema,
   expenseInputSchema,
   settlementInputSchema,
@@ -47,6 +51,7 @@ import {
   verifyToken,
 } from './auth.js';
 import { migrate, type Db } from './db.js';
+import { createGpxFinder, type GpxFinder } from './gpxFinder.js';
 import { ImportError, type Importer } from './importer.js';
 import { notifyComment, notifyNewEvent, type PushSender } from './push.js';
 
@@ -61,6 +66,8 @@ export interface AppOptions {
   importsPerHour?: number;
   /** Fehlt er, gibt es keine Push-Benachrichtigungen. */
   push?: PushSender | null;
+  /** GPX-Suche auf Websites; in Tests ersetzbar. */
+  gpxFinder?: GpxFinder;
 }
 
 class HttpError extends Error {
@@ -194,6 +201,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const now = options.now ?? (() => Date.now());
   const importer = options.importer ?? null;
   const push = options.push ?? null;
+  const gpxFinder = options.gpxFinder ?? createGpxFinder();
   const loginThrottle = new Throttle(10, 15 * 60 * 1000);
   const importThrottle = new Throttle(options.importsPerHour ?? 30, 60 * 60 * 1000);
 
@@ -920,10 +928,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
    * GPX-Verlauf hinterlegen (im Browser eingelesen und ausgedünnt). Fehlen bei der
    * Strecke Distanz oder Höhenmeter, werden sie aus dem Verlauf übernommen.
    */
-  app.put<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {
-    const userId = await requireUser(request);
-    const eventId = await raceEvent(request.params.id, userId);
-    const input = parse(trackInputSchema, request.body);
+  /** Speichert einen Streckenverlauf und füllt leere Distanz/Höhenmeter der Strecke. */
+  async function saveTrack(raceId: string, input: z.output<typeof trackInputSchema>, userId: string): Promise<void> {
     const km = Math.round(input.distanceKm * 10) / 10;
     await db.transaction(async (tx) => {
       await tx.query(
@@ -934,7 +940,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
            min_ele = excluded.min_ele, max_ele = excluded.max_ele, uploaded_by = excluded.uploaded_by,
            uploaded_at = excluded.uploaded_at`,
         [
-          request.params.id,
+          raceId,
           input.name,
           JSON.stringify(input.points),
           input.distanceKm,
@@ -951,14 +957,101 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
            elevation_up_m = coalesce(elevation_up_m, $3), elevation_down_m = coalesce(elevation_down_m, $4)
          where id = $1`,
         [
-          request.params.id,
+          raceId,
           km,
           input.gainM === null ? null : Math.round(input.gainM),
           input.lossM === null ? null : Math.round(input.lossM),
         ],
       );
     });
+  }
+
+  app.put<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {
+    const userId = await requireUser(request);
+    const eventId = await raceEvent(request.params.id, userId);
+    const input = parse(trackInputSchema, request.body);
+    await saveTrack(request.params.id, input, userId);
     return loadEvent(eventId, userId);
+  });
+
+  // GPX-Suche auf der Website ---------------------------------------------------
+
+  /** Sucht GPX-Dateien auf der Website der Veranstaltung und schlägt eine Zuordnung vor. */
+  app.post<{ Params: { id: string } }>('/api/events/:id/gpx-search', async (request, reply) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    if (!event.website) throw new HttpError(400, 'no_website', 'Die Veranstaltung hat keine Website');
+    const wait = importThrottle.retryAfter(userId, now());
+    if (wait > 0) {
+      return retryAfter(reply, wait)
+        .code(429)
+        .send({ error: 'too_many_imports', message: 'Zu viele Suchen in dieser Stunde' });
+    }
+    importThrottle.record(userId, now());
+    let found;
+    try {
+      found = await gpxFinder.search(event.website);
+    } catch (error) {
+      if (error instanceof ImportError) throw new HttpError(422, error.code, error.message);
+      throw error;
+    }
+    const files = found.files;
+    let matches: Map<string, number | null> | null = null;
+    let matchedBy: GpxSearchResult['matchedBy'] = null;
+    if (files.length > 0 && event.races.length > 0) {
+      if (importer?.matchTracks) {
+        try {
+          matches = await importer.matchTracks(
+            event.races.map((r) => ({ id: r.id, name: r.name, distanceKm: r.distanceKm, elevationUpM: r.elevationUpM })),
+            files.map((f) => ({ fileName: f.fileName, label: f.label, distanceKm: f.track.distanceKm, gainM: f.track.gainM ?? null })),
+          );
+          matchedBy = 'ai';
+        } catch (error) {
+          request.log.warn({ err: error }, 'GPX-Zuordnung per KI fehlgeschlagen, nehme Distanz');
+        }
+      }
+      if (matches === null) {
+        matches = matchByDistance(event.races, files.map((f) => ({ distanceKm: f.track.distanceKm })));
+        matchedBy = 'distance';
+      }
+    }
+    const raceOfFile = new Map<number, string>();
+    for (const [raceId, index] of matches ?? []) if (index !== null) raceOfFile.set(index, raceId);
+    const result: GpxSearchResult = {
+      candidates: files.map((f, index) => ({
+        url: f.url,
+        fileName: f.fileName,
+        label: f.label,
+        distanceKm: Math.round(f.track.distanceKm * 10) / 10,
+        gainM: f.track.gainM === null || f.track.gainM === undefined ? null : Math.round(f.track.gainM),
+        raceId: raceOfFile.get(index) ?? null,
+      })),
+      external: found.external,
+      pagesChecked: found.pagesChecked,
+      matchedBy,
+    };
+    return result;
+  });
+
+  /** Übernimmt bestätigte Dateien: lädt sie erneut und speichert sie bei den Strecken. */
+  app.post<{ Params: { id: string } }>('/api/events/:id/gpx-apply', async (request) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    const input = parse(gpxApplySchema, request.body);
+    const raceIds = new Set(event.races.map((r) => r.id));
+    if (input.items.some((item) => !raceIds.has(item.raceId))) {
+      throw new HttpError(400, 'invalid_input', 'Strecke gehört nicht zur Veranstaltung');
+    }
+    const tracks: { raceId: string; track: TrackInput }[] = [];
+    for (const item of input.items) {
+      try {
+        tracks.push({ raceId: item.raceId, track: await gpxFinder.download(item.url) });
+      } catch {
+        throw new HttpError(422, 'fetch_failed', `GPX-Datei konnte nicht geladen werden: ${item.url}`);
+      }
+    }
+    for (const { raceId, track } of tracks) await saveTrack(raceId, parse(trackInputSchema, track), userId);
+    return loadEvent(event.id, userId);
   });
 
   app.delete<{ Params: { id: string } }>('/api/races/:id/track', async (request) => {

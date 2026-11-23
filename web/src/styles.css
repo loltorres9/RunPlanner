@@ -1067,3 +1067,32 @@ a.version {
 .expense-overview li > :first-child {
   grid-column: 1 / -1;
 }
+
+/* GPX-Suche ---------------------------------------------------------------- */
+.gpx-matches,
+.external-routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.gpx-matches li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gpx-matches select {
+  width: 100%;
+  min-width: 0;
+}
+.external-routes {
+  gap: 6px;
+}
+.external-routes a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-word;
+}
