@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.0',
+    date: '2026-11-23',
+    de: [
+      'Kosten teilen: Bei jeder Veranstaltung lassen sich Ausgaben erfassen – wer hat bezahlt, wie viel, wofür und für wen. Standardmäßig wird gleich aufgeteilt, einzelne Beträge lassen sich anpassen.',
+      'Im Tab „Kosten“ steht jetzt „Wer schuldet wem“, über alle Veranstaltungen verrechnet mit möglichst wenigen Überweisungen. „Erledigt“ hakt eine Zahlung ab.',
+    ],
+    en: [
+      'Split costs: add expenses to any event – who paid, how much, what for and for whom. It is split equally by default, and individual amounts can be adjusted.',
+      'The “Costs” tab now shows “Who owes whom”, settled across all events with as few transfers as possible. “Done” ticks off a payment.',
+    ],
+  },
+  {
     version: '0.12.0',
     date: '2026-11-23',
     de: [

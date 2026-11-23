@@ -979,3 +979,91 @@ a.version {
   font-size: 11px;
   fill: var(--muted);
 }
+
+/* Kosten teilen ------------------------------------------------------------ */
+.expense-list,
+.transfer-list,
+.expense-overview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.expense-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.expense-list li:last-child {
+  border-bottom: none;
+}
+.expense-form fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0;
+  gap: 8px;
+}
+.expense-form legend {
+  display: flex;
+  gap: 12px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.share-row {
+  min-height: 36px;
+  gap: 10px;
+}
+.share-row .toggle {
+  min-width: 0;
+}
+.share-input {
+  width: 96px;
+  text-align: right;
+}
+.transfer-list {
+  gap: 8px;
+}
+.transfer-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.transfer-list li.mine {
+  background: var(--ok-bg);
+  border-color: transparent;
+}
+.transfer-names {
+  flex: 1;
+  min-width: 0;
+}
+.transfer-amount {
+  white-space: nowrap;
+}
+.ok-text {
+  color: var(--accent-strong);
+}
+.settle details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.expense-overview li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.expense-overview li > :first-child {
+  grid-column: 1 / -1;
+}
