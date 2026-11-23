@@ -5,8 +5,8 @@ import { Icon, type IconName } from './Icon.js';
 import { UpdateBanner } from './UpdateBanner.js';
 
 const TABS: { id: string; path: string; icon: IconName; label: 'calendar' | 'list' | 'costs' | 'group' | 'settings' }[] = [
-  { id: 'calendar', path: '', icon: 'calendar', label: 'calendar' },
   { id: 'list', path: 'list', icon: 'list', label: 'list' },
+  { id: 'calendar', path: 'calendar', icon: 'calendar', label: 'calendar' },
   { id: 'costs', path: 'costs', icon: 'coins', label: 'costs' },
   { id: 'group', path: 'group', icon: 'users', label: 'group' },
   { id: 'settings', path: 'settings', icon: 'settings', label: 'settings' },
