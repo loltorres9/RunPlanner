@@ -127,7 +127,25 @@ export interface RunEvent {
   accommodations: Accommodation[];
   /** Wer wo übernachtet. */
   stays: Stay[];
+  /** Kurzinfo zu den Kommentaren, für Zähler in der Liste. */
+  comments: CommentSummary;
 }
+
+export interface CommentSummary {
+  count: number;
+  lastAt: number | null;
+  lastBy: string | null;
+}
+
+export interface EventComment {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: number;
+}
+
+export const commentInputSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 
 export const STAY_CHOICES = ['none', 'suggested', 'other'] as const;
 export type StayChoice = (typeof STAY_CHOICES)[number];
@@ -231,6 +249,8 @@ export interface NotificationSettings {
   deadlineDays: number;
   /** Tage vor einer Veranstaltung, bei der man eingetragen ist. */
   eventDays: number;
+  /** Neue Kommentare bei Veranstaltungen, bei denen man eingetragen ist oder mitschreibt. */
+  comments: boolean;
 }
 
 const reminderDays = z
@@ -242,6 +262,7 @@ export const notificationSettingsSchema = z.object({
   newEvent: z.boolean().optional(),
   deadlineDays: reminderDays.optional(),
   eventDays: reminderDays.optional(),
+  comments: z.boolean().optional(),
 });
 export type NotificationSettingsInput = z.input<typeof notificationSettingsSchema>;
 

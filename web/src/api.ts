@@ -1,6 +1,6 @@
 /** Zugriff auf die Server-API. Das Token liegt im localStorage des Geräts. */
 
-import type { NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
+import type { EventComment, NotificationSettingsInput, AccommodationInput, EventInput, StayInput, GroupDetail, ImportResult, Language, Me, ParticipationStatus, RunEvent } from '@runplanner/shared';
 
 const TOKEN_KEY = 'token';
 
@@ -94,5 +94,8 @@ export const api = {
   setStay: (eventId: string, input: StayInput | { night?: string | null; choice: null }) =>
     request<RunEvent>('PUT', `/api/events/${eventId}/stay`, input),
   setStayMode: (eventId: string, perNight: boolean) => request<RunEvent>('PUT', `/api/events/${eventId}/stay-mode`, { perNight }),
+  comments: (eventId: string) => request<EventComment[]>('GET', `/api/events/${eventId}/comments`),
+  addComment: (eventId: string, text: string) => request<EventComment[]>('POST', `/api/events/${eventId}/comments`, { text }),
+  deleteComment: (id: string) => request<EventComment[]>('DELETE', `/api/comments/${id}`),
   importFromUrl: (url: string, language: Language) => request<ImportResult>('POST', '/api/import', { url, language }),
 };

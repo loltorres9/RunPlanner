@@ -65,6 +65,10 @@ export function NotificationSettings() {
         <input type="checkbox" checked={settings.newEvent} onChange={(e) => void update({ newEvent: e.target.checked })} />
         {t.notify.newEvent}
       </label>
+      <label className="toggle">
+        <input type="checkbox" checked={settings.comments} onChange={(e) => void update({ comments: e.target.checked })} />
+        {t.notify.comments}
+      </label>
       <label>
         {t.notify.deadline}
         <select value={settings.deadlineDays} onChange={(e) => void update({ deadlineDays: Number(e.target.value) })}>

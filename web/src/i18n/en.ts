@@ -204,6 +204,14 @@ export const en: Messages = {
     save: 'Save password',
     toLogin: 'Go to sign in',
   },
+  comments: {
+    title: 'Comments',
+    empty: 'No comments yet. For example: who is driving with whom?',
+    placeholder: 'Write a comment …',
+    send: 'Send',
+    deleteConfirm: 'Delete comment?',
+    hint: 'Everyone signed up here or taking part in the conversation gets a notification.',
+  },
   notify: {
     title: 'Notifications',
     device: 'On this device',
@@ -216,6 +224,7 @@ export const en: Messages = {
     unsupported: 'This browser cannot receive notifications.',
     serverOff: 'Notifications are not set up on the server.',
     newEvent: 'New event in the group',
+    comments: 'New comments on my events',
     deadline: 'Registration deadline (if I am only interested)',
     event: 'Event coming up (if I am signed up)',
     daysBefore: '{count} days before',

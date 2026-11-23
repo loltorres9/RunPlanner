@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.0',
+    date: '2026-11-23',
+    de: [
+      'Kommentare pro Veranstaltung, z. B. für Fahrgemeinschaften. Eigene Kommentare lassen sich löschen.',
+      'Wer eingetragen ist oder mitschreibt, bekommt eine Benachrichtigung (abschaltbar). In der Terminliste zeigt eine grüne Sprechblase neue Kommentare.',
+    ],
+    en: [
+      'Comments on each event, e.g. for car sharing. You can delete your own comments.',
+      'Everyone signed up or taking part in the conversation gets a notification (can be turned off). A green speech bubble in the event list shows new comments.',
+    ],
+  },
+  {
     version: '0.10.0',
     date: '2026-11-23',
     de: [

@@ -5,6 +5,7 @@ import { useI18n } from '../i18n/index.js';
 import { navigate, todayIso, useApp } from '../state.js';
 import { eventColor, initials } from './EventCard.js';
 import { Icon } from './Icon.js';
+import { CommentsSection } from './CommentsSection.js';
 import { StaysSection } from './StaysSection.js';
 
 export function eventToInput(event: RunEvent): EventInput {
@@ -126,6 +127,8 @@ export function EventDetail(props: { eventId: string }) {
       ))}
 
       {event.accommodationNeeded && <StaysSection event={event} onChange={(action) => update(action)} />}
+
+      <CommentsSection event={event} />
 
       <div className="row gap">
         <button type="button" className="primary" onClick={() => navigate(`event/${event.id}/edit`)}>

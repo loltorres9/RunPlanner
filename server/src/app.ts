@@ -11,6 +11,8 @@ import {
   accommodationInputSchema,
   eventInputSchema,
   eventNights,
+  commentInputSchema,
+  type EventComment,
   notificationSettingsSchema,
   stayInputSchema,
   type Accommodation,
@@ -41,7 +43,7 @@ import {
 } from './auth.js';
 import { migrate, type Db } from './db.js';
 import { ImportError, type Importer } from './importer.js';
-import { notifyNewEvent, type PushSender } from './push.js';
+import { notifyComment, notifyNewEvent, type PushSender } from './push.js';
 
 export interface AppOptions {
   db: Db;
@@ -133,6 +135,7 @@ interface UserRow {
   notify_new_event: boolean;
   notify_deadline_days: number;
   notify_event_days: number;
+  notify_comments: boolean;
 }
 
 interface EventRow {
@@ -259,6 +262,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         newEvent: user.notify_new_event,
         deadlineDays: user.notify_deadline_days,
         eventDays: user.notify_event_days,
+        comments: user.notify_comments,
       },
     };
   }
@@ -370,6 +374,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       staysByEvent.set(s.event_id, list);
     }
 
+    const commentStats = await db.query<{ event_id: string; count: string | number; last_at: string | number; last_by: string }>(
+      `select distinct on (event_id) event_id, count(*) over (partition by event_id) as count,
+         created_at as last_at, user_id as last_by
+       from comments where event_id = any($1::text[]) order by event_id, created_at desc`,
+      [ids],
+    );
+    const commentsByEvent = new Map(
+      commentStats.rows.map((c) => [c.event_id, { count: Number(c.count), lastAt: Number(c.last_at), lastBy: c.last_by }]),
+    );
+
     const byEvent = new Map<string, Race[]>();
     for (const r of races.rows) {
       const list = byEvent.get(r.event_id) ?? [];
@@ -408,6 +422,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       races: byEvent.get(e.id) ?? [],
       accommodations: accommodationsByEvent.get(e.id) ?? [],
       stays: staysByEvent.get(e.id) ?? [],
+      comments: commentsByEvent.get(e.id) ?? { count: 0, lastAt: null, lastBy: null },
     }));
   }
 
@@ -556,6 +571,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     }
     if (notify?.eventDays !== undefined) {
       await db.query('update users set notify_event_days = $1 where id = $2', [notify.eventDays, userId]);
+    }
+    if (notify?.comments !== undefined) {
+      await db.query('update users set notify_comments = $1 where id = $2', [notify.comments, userId]);
     }
     return loadMe(userId);
   });
@@ -980,6 +998,55 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       await tx.query('delete from stays where event_id = $1 and user_id = $2', [event.id, userId]);
     });
     return loadEvent(event.id, userId);
+  });
+
+  // Kommentare ------------------------------------------------------------------
+
+  async function loadComments(eventId: string): Promise<EventComment[]> {
+    const rows = await db.query<{ id: string; user_id: string; user_name: string; text: string; created_at: string | number }>(
+      `select c.id, c.user_id, u.name as user_name, c.text, c.created_at from comments c
+       join users u on u.id = c.user_id where c.event_id = $1 order by c.created_at, c.id`,
+      [eventId],
+    );
+    return rows.rows.map((c) => ({ id: c.id, userId: c.user_id, userName: c.user_name, text: c.text, createdAt: Number(c.created_at) }));
+  }
+
+  app.get<{ Params: { id: string } }>('/api/events/:id/comments', async (request) => {
+    const event = await loadEvent(request.params.id, await requireUser(request));
+    return loadComments(event.id);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/events/:id/comments', async (request, reply) => {
+    const userId = await requireUser(request);
+    const event = await loadEvent(request.params.id, userId);
+    const input = parse(commentInputSchema, request.body);
+    await db.query('insert into comments (id, event_id, user_id, text, created_at) values ($1,$2,$3,$4,$5)', [
+      newId(),
+      event.id,
+      userId,
+      input.text,
+      now(),
+    ]);
+    const me = await loadMe(userId);
+    void notifyComment(db, push, { id: event.id, name: event.name }, { id: userId, name: me.user.name }, input.text, (m) =>
+      request.log.warn(m),
+    ).catch((error) => request.log.error(error));
+    reply.code(201);
+    return loadComments(event.id);
+  });
+
+  /** Eigene Kommentare löschen. */
+  app.delete<{ Params: { id: string } }>('/api/comments/:id', async (request) => {
+    const userId = await requireUser(request);
+    const found = await db.query<{ event_id: string; user_id: string }>('select event_id, user_id from comments where id = $1', [
+      request.params.id,
+    ]);
+    const comment = found.rows[0];
+    if (comment === undefined) throw new HttpError(404, 'not_found', 'Kommentar nicht gefunden');
+    await loadEvent(comment.event_id, userId);
+    if (comment.user_id !== userId) throw new HttpError(403, 'forbidden', 'Nur eigene Kommentare lassen sich löschen');
+    await db.query('delete from comments where id = $1', [request.params.id]);
+    return loadComments(comment.event_id);
   });
 
   // Push-Benachrichtigungen ----------------------------------------------------

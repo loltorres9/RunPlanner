@@ -891,3 +891,57 @@ a.version {
   flex-shrink: 0;
   padding: 10px 12px;
 }
+.comment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.comment-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.comment-body {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.comment-list li.mine .comment-body {
+  background: var(--ok-bg);
+}
+.comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.comment-head .link {
+  margin-left: auto;
+  padding: 0;
+}
+.comment-body p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.comment-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.comment-form textarea {
+  flex: 1;
+  resize: vertical;
+}
+.badge.comments {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.badge.comments.unread {
+  background: var(--accent);
+  color: var(--accent-text);
+}

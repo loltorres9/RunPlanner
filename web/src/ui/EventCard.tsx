@@ -1,6 +1,7 @@
 import { eventPeople, eventTodos, type RunEvent } from '@runplanner/shared';
 import { useI18n } from '../i18n/index.js';
-import { todayIso } from '../state.js';
+import { hasUnreadComments } from '../comments.js';
+import { todayIso, useApp } from '../state.js';
 import { Icon } from './Icon.js';
 
 const COLORS = ['#2f7d5b', '#c4622d', '#3a6ea5', '#8a5a9e', '#b08a1e', '#4d8a8a', '#a8455b'];
@@ -20,7 +21,9 @@ export function initials(name: string): string {
 export function EventCard(props: { event: RunEvent; showAdded?: boolean; isNew?: boolean }) {
   const { t, f, date, number, ago } = useI18n();
   const { event } = props;
+  const { me } = useApp();
   const todos = eventTodos(event, todayIso());
+  const unread = hasUnreadComments(event, me.user.id);
   const people = eventPeople(event);
   const distances = event.races
     .map((r) => (r.distanceKm !== null ? `${number(r.distanceKm)} km` : r.name))
@@ -56,6 +59,11 @@ export function EventCard(props: { event: RunEvent; showAdded?: boolean; isNew?:
               {initials(p.userName)}
             </span>
           ))}
+          {event.comments.count > 0 && (
+            <span className={`badge comments ${unread ? 'unread' : ''}`} title={t.comments.title}>
+              <Icon name="message" size={14} /> {event.comments.count}
+            </span>
+          )}
           {todos.includes('accommodation') && (
             <span className="badge warn">
               <Icon name="bed" size={14} /> {t.event.accommodationOpen}
