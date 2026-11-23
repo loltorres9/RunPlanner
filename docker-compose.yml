@@ -1,0 +1,35 @@
+# Lokaler Betrieb wie auf Railway: derselbe Container, daneben ein echtes Postgres.
+#
+#   docker compose up --build   → http://localhost:3000
+#
+# Ohne Docker geht es auch: npm run build && npm run start:local
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: runplanner
+      POSTGRES_PASSWORD: runplanner
+      POSTGRES_DB: runplanner
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U runplanner']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://runplanner:runplanner@db:5432/runplanner
+      PORT: 3000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - '3000:3000'
+
+volumes:
+  db-data:

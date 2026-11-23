@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/dist-types
+**/*.tsbuildinfo
+.git
+.gitignore
+data
+coverage
+*.log
+.env
+.env.*
+tools/e2e*

@@ -1,0 +1,27 @@
+{
+  "name": "runplanner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w web && npm run build -w server",
+    "start": "node server/dist/index.js",
+    "start:local": "node tools/dev-stack.mjs",
+    "dev:web": "npm run dev -w web",
+    "test": "vitest run",
+    "typecheck": "tsc -b shared server web"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
