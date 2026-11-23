@@ -53,3 +53,16 @@ export function rangeClick(pending: string | null, day: string): RangeClick {
   if (pending === null || day < pending) return { kind: 'pending', start: day };
   return { kind: 'done', start: pending, end: day === pending ? null : day };
 }
+
+/** Abstand in die Vergangenheit als passende Einheit, für „vor 2 Tagen“. */
+export function relativeAgo(diffMs: number): { value: number; unit: Intl.RelativeTimeFormatUnit } {
+  const minutes = Math.round(Math.max(0, diffMs) / 60_000);
+  if (minutes < 60) return { value: -minutes, unit: 'minute' };
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return { value: -hours, unit: 'hour' };
+  const days = Math.round(hours / 24);
+  if (days < 7) return { value: -days, unit: 'day' };
+  if (days < 30) return { value: -Math.round(days / 7), unit: 'week' };
+  if (days < 365) return { value: -Math.round(days / 30), unit: 'month' };
+  return { value: -Math.round(days / 365), unit: 'year' };
+}

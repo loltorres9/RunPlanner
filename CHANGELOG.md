@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.6.0 – 2026-11-23
+- Terminliste: Umschalter „Nach Datum | Neu hinzugefügt“. Neu hinzugefügt zeigt die neuesten Einträge zuerst, mit wem und wann.
+- Abzeichen „Neu“ für Veranstaltungen, die andere seit dem letzten Blick in die Liste angelegt haben (pro Gerät).
+
 ## 0.5.0 – 2026-11-23
 - Unterkunft pro Nacht: Bei mehrtägigen Veranstaltungen kann jede Person „Jede Nacht anders“ wählen (z. B. Etappenläufe). Vorschläge lassen sich einzelnen Nächten zuordnen, und eine Übersicht zeigt pro Nacht, wer wo schläft.
 

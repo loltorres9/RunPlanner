@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysBetween, monthGrid, rangeClick } from './dates.js';
+import { daysBetween, monthGrid, rangeClick, relativeAgo } from './dates.js';
 
 describe('rangeClick', () => {
   it('setzt Start, dann Ende und schließt', () => {
@@ -30,5 +30,15 @@ describe('monthGrid', () => {
     expect(grid[0]).toBe('2027-05-31');
     expect(grid.length % 7).toBe(0);
     expect(grid).toContain('2027-06-30');
+  });
+});
+
+describe('relativeAgo', () => {
+  it('wählt eine passende Einheit', () => {
+    expect(relativeAgo(5 * 60_000)).toEqual({ value: -5, unit: 'minute' });
+    expect(relativeAgo(3 * 3_600_000)).toEqual({ value: -3, unit: 'hour' });
+    expect(relativeAgo(2 * 86_400_000)).toEqual({ value: -2, unit: 'day' });
+    expect(relativeAgo(15 * 86_400_000)).toEqual({ value: -2, unit: 'week' });
+    expect(relativeAgo(-1000)).toEqual({ value: -0, unit: 'minute' });
   });
 });

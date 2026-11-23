@@ -55,6 +55,12 @@ export const de = {
     nothingThisMonth: 'Diesen Monat steht nichts an.',
   },
   list: {
+    justNow: 'gerade eben',
+    sortDate: 'Nach Datum',
+    sortAdded: 'Neu hinzugefügt',
+    addedBy: 'von {name} · {ago}',
+    newBadge: 'Neu',
+    recentlyAdded: 'Zuletzt hinzugefügt',
     upcoming: 'Als Nächstes',
     past: 'Vergangen',
     empty: 'Noch keine Veranstaltungen. Tipp auf +, um die erste einzutragen.',

@@ -17,8 +17,8 @@ export function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase();
 }
 
-export function EventCard(props: { event: RunEvent }) {
-  const { t, date, number } = useI18n();
+export function EventCard(props: { event: RunEvent; showAdded?: boolean; isNew?: boolean }) {
+  const { t, f, date, number, ago } = useI18n();
   const { event } = props;
   const todos = eventTodos(event, todayIso());
   const people = eventPeople(event);
@@ -34,7 +34,10 @@ export function EventCard(props: { event: RunEvent }) {
         <span className="month">{date(event.startDate, { month: 'short' })}</span>
       </div>
       <div className="event-main">
-        <strong>{event.name}</strong>
+        <strong>
+          {event.name}
+          {props.isNew && <span className="badge new">{t.list.newBadge}</span>}
+        </strong>
         <div className="meta">
           {event.location && (
             <span>
@@ -44,6 +47,9 @@ export function EventCard(props: { event: RunEvent }) {
           {event.endDate && <span>– {date(event.endDate, { day: 'numeric', month: 'short' })}</span>}
         </div>
         {distances && <div className="meta">{distances}</div>}
+        {props.showAdded && (
+          <div className="meta added">{f(t.list.addedBy, { name: event.createdByName, ago: ago(event.createdAt) })}</div>
+        )}
         <div className="row wrap gap-s">
           {people.map((p) => (
             <span key={p.userId} className="avatar" title={p.userName}>
