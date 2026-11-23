@@ -5,7 +5,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EventInput, GroupDetail, ImportResult, Me, RunEvent } from '@runplanner/shared';
+import type { EventComment, EventInput, GroupDetail, ImportResult, Me, RunEvent } from '@runplanner/shared';
 import { buildApp } from './app.js';
 import type { Importer } from './importer.js';
 import { runDailyReminders, type PushMessage, type PushSender } from './push.js';
@@ -348,7 +348,7 @@ describe('Push-Benachrichtigungen', () => {
     await call('PUT', `/api/races/${ultra!.id}/participation`, ben.token, { status: 'interested' });
     await call('PUT', `/api/races/${ultra!.id}/participation`, anna.token, { status: 'registered' });
     const me = await call<Me>('PATCH', '/api/me', anna.token, { notifications: { eventDays: 3, newEvent: false } });
-    expect(me.body.notifications).toEqual({ newEvent: false, deadlineDays: 7, eventDays: 3 });
+    expect(me.body.notifications).toEqual({ newEvent: false, deadlineDays: 7, eventDays: 3, comments: true });
     expect((await call('PATCH', '/api/me', anna.token, { notifications: { eventDays: 5 } })).status).toBe(400);
 
     const db = createPgliteDb(pg);
@@ -372,5 +372,50 @@ describe('Push-Benachrichtigungen', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     const left = await pg.query<{ endpoint: string }>('select endpoint from push_subscriptions');
     expect(left.rows.map((r) => r.endpoint)).toEqual(['https://push.example/anna']);
+  });
+});
+
+describe('Kommentare', () => {
+  it('schreibt, zählt, benachrichtigt und löscht nur eigene', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const carla = await register('carla@x.de', 'Carla', group.body.inviteCode);
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const id = created.body.id;
+    expect(created.body.comments).toEqual({ count: 0, lastAt: null, lastBy: null });
+    await call('PUT', `/api/races/${created.body.races[0]!.id}/participation`, ben.token, { status: 'registered' });
+    await call('POST', '/api/push/subscribe', ben.token, { endpoint: 'https://push.example/ben', keys: { p256dh: 'p', auth: 'a' } });
+    await call('POST', '/api/push/subscribe', carla.token, { endpoint: 'https://push.example/carla', keys: { p256dh: 'p', auth: 'a' } });
+    pushed = [];
+
+    const first = await call<EventComment[]>('POST', `/api/events/${id}/comments`, anna.token, { text: 'Wer fährt mit?' });
+    expect(first.status).toBe(201);
+    expect(first.body.map((c) => [c.userName, c.text])).toEqual([['Anna', 'Wer fährt mit?']]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Ben ist eingetragen, Carla nicht.
+    expect(pushed.map((p) => [p.endpoint, p.message.title, p.message.body])).toEqual([
+      ['https://push.example/ben', 'Anna · Chiemgau Trail', 'Wer fährt mit?'],
+    ]);
+
+    // Carla schreibt mit und bekommt danach auch Antworten.
+    await call('POST', `/api/events/${id}/comments`, carla.token, { text: 'Ich!' });
+    pushed = [];
+    await call('POST', `/api/events/${id}/comments`, ben.token, { text: 'Super' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(pushed.map((p) => p.endpoint)).toEqual(['https://push.example/carla']);
+
+    const event = await call<RunEvent>('GET', `/api/events/${id}`, anna.token);
+    expect(event.body.comments).toMatchObject({ count: 3, lastBy: ben.me.user.id });
+    expect((await call('POST', `/api/events/${id}/comments`, anna.token, { text: '   ' })).status).toBe(400);
+
+    const list = await call<EventComment[]>('GET', `/api/events/${id}/comments`, ben.token);
+    const annas = list.body[0]!;
+    expect((await call('DELETE', `/api/comments/${annas.id}`, ben.token)).status).toBe(403);
+    const after = await call<EventComment[]>('DELETE', `/api/comments/${annas.id}`, anna.token);
+    expect(after.body.map((c) => c.text)).toEqual(['Ich!', 'Super']);
+
+    const fremd = await register('fremd@x.de', 'Fremd');
+    expect((await call('GET', `/api/events/${id}/comments`, fremd.token)).status).toBe(404);
   });
 });

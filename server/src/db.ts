@@ -178,6 +178,18 @@ create table if not exists push_sent (
 alter table users add column if not exists notify_new_event boolean not null default true;
 alter table users add column if not exists notify_deadline_days integer not null default 7;
 alter table users add column if not exists notify_event_days integer not null default 7;
+alter table users add column if not exists notify_comments boolean not null default true;
+
+-- Kommentare zu einer Veranstaltung.
+create table if not exists comments (
+  id text primary key,
+  event_id text not null references events(id) on delete cascade,
+  user_id text not null references users(id) on delete cascade,
+  text text not null,
+  created_at bigint not null
+);
+
+create index if not exists comments_event_idx on comments (event_id, created_at);
 `;
 
 export async function migrate(db: Db): Promise<void> {

@@ -175,6 +175,41 @@ export async function notifyNewEvent(
 }
 
 /**
+ * Neuer Kommentar: an alle, die beim Event eingetragen sind oder dort schon geschrieben
+ * haben, außer der schreibenden Person.
+ */
+export async function notifyComment(
+  db: Db,
+  sender: PushSender | null,
+  event: { id: string; name: string },
+  author: { id: string; name: string },
+  text: string,
+  log?: (message: string) => void,
+): Promise<void> {
+  if (sender === null) return;
+  const people = await db.query<{ id: string }>(
+    `select distinct u.id from users u
+     where u.id <> $2 and u.notify_comments
+       and exists (select 1 from memberships m join events e on e.group_id = m.group_id where e.id = $1 and m.user_id = u.id)
+       and (
+       exists (select 1 from participations p join races r on r.id = p.race_id where r.event_id = $1 and p.user_id = u.id)
+       or exists (select 1 from comments c where c.event_id = $1 and c.user_id = u.id))`,
+    [event.id, author.id],
+  );
+  const short = text.length > 140 ? `${text.slice(0, 137)}…` : text;
+  const messages = new Map<string, PushMessage>();
+  for (const person of people.rows) {
+    messages.set(person.id, {
+      title: `${author.name} · ${event.name}`,
+      body: short,
+      url: `/#/event/${event.id}`,
+      tag: `comment-${event.id}`,
+    });
+  }
+  await deliver(db, sender, messages, log);
+}
+
+/**
  * Erinnerungen eines Tages: Anmeldeschluss (nur mit Interesse, noch nicht angemeldet)
  * und bevorstehende Veranstaltungen (mit irgendeinem Eintrag). Jede Erinnerung geht
  * genau einmal raus; verschiebt sich das Datum, gilt sie als neu.

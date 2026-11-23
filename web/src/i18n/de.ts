@@ -202,6 +202,14 @@ export const de = {
     save: 'Passwort speichern',
     toLogin: 'Zur Anmeldung',
   },
+  comments: {
+    title: 'Kommentare',
+    empty: 'Noch keine Kommentare. Zum Beispiel: Wer fährt mit wem?',
+    placeholder: 'Kommentar schreiben …',
+    send: 'Senden',
+    deleteConfirm: 'Kommentar löschen?',
+    hint: 'Alle, die hier eingetragen sind oder mitschreiben, bekommen eine Benachrichtigung.',
+  },
   notify: {
     title: 'Benachrichtigungen',
     device: 'Auf diesem Gerät',
@@ -214,6 +222,7 @@ export const de = {
     unsupported: 'Dieser Browser kann keine Benachrichtigungen empfangen.',
     serverOff: 'Benachrichtigungen sind auf dem Server nicht eingerichtet.',
     newEvent: 'Neue Veranstaltung in der Gruppe',
+    comments: 'Neue Kommentare bei meinen Veranstaltungen',
     deadline: 'Anmeldeschluss (wenn ich nur Interesse habe)',
     event: 'Veranstaltung steht an (wenn ich eingetragen bin)',
     daysBefore: '{count} Tage vorher',
