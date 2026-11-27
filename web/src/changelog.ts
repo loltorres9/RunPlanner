@@ -14,6 +14,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.17.0',
+    date: '2026-11-27',
+    de: [
+      'Angemeldete Strecken im eigenen Kalender: Unter Einstellungen → „In eigenen Kalender übernehmen“ den Kalender abonnieren (iPhone, Mac, Outlook, Google). Neue Anmeldungen, geänderte Startzeiten und Abmeldungen kommen von selbst nach, ohne doppelte Einträge.',
+      'Alternativ als .ics-Datei herunterladen. Ein erneuter Import aktualisiert die Termine, statt sie doppelt anzulegen.',
+      'Der Abo-Link ist geheim und lässt sich jederzeit erneuern; der alte funktioniert dann nicht mehr.',
+    ],
+    en: [
+      'Races you are registered for in your own calendar: under Settings → “Add to your own calendar”, subscribe (iPhone, Mac, Outlook, Google). New registrations, changed start times and cancellations follow automatically, without duplicates.',
+      'Or download an .ics file. Importing it again updates the entries instead of adding them twice.',
+      'The subscription link is secret and can be renewed at any time; the old one then stops working.',
+    ],
+  },
+  {
     version: '0.16.0',
     date: '2026-11-27',
     de: [

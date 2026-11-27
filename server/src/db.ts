@@ -258,6 +258,10 @@ create index if not exists race_teams_race_idx on race_teams (race_id);
 
 alter table participations add column if not exists team_id text references race_teams(id) on delete set null;
 alter table participations add column if not exists joined_at bigint;
+
+-- Geheimer Link zum Kalender-Abo (iCal). Neu erzeugen macht den alten ungültig.
+alter table users add column if not exists calendar_token text;
+create unique index if not exists users_calendar_token_idx on users (calendar_token);
 `;
 
 export async function migrate(db: Db): Promise<void> {

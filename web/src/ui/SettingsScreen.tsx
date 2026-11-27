@@ -5,6 +5,7 @@ import { useApp } from '../state.js';
 import { APP_BUILT, APP_COMMIT, APP_VERSION } from '../version.js';
 import { LanguageSwitch } from './LanguageSwitch.js';
 import { NotificationSettings } from './NotificationSettings.js';
+import { CalendarExport } from './CalendarExport.js';
 import { applyTheme, storedTheme, type Theme } from '../theme.js';
 
 export function SettingsScreen() {
@@ -64,6 +65,8 @@ export function SettingsScreen() {
       </section>
 
       <NotificationSettings />
+
+      <CalendarExport />
 
       <section className="card stack">
         <h2>{t.settings.theme}</h2>

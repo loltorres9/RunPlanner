@@ -9,6 +9,8 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   accommodationInputSchema,
+  buildCalendar,
+  type CalendarEntry,
   eventInputSchema,
   eventNights,
   trackInputSchema,
@@ -45,6 +47,7 @@ import { z } from 'zod';
 import {
   checkPassword,
   hashPassword,
+  newCalendarToken,
   newId,
   hashResetCode,
   newInviteCode,
@@ -689,6 +692,111 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       [await hashPassword(input.newPassword), userId],
     );
     return { token: issueToken(updated.rows[0] ?? user) };
+  });
+
+  // Kalender-Abo ---------------------------------------------------------------
+
+  /** Der geheime Abo-Link der Person; wird beim ersten Abruf angelegt. */
+  app.get('/api/me/calendar', async (request) => {
+    const userId = await requireUser(request);
+    const found = await db.query<{ calendar_token: string | null }>('select calendar_token from users where id = $1', [userId]);
+    const existing = found.rows[0]?.calendar_token ?? null;
+    if (existing !== null) return { token: existing };
+    const updated = await db.query<{ calendar_token: string }>(
+      'update users set calendar_token = coalesce(calendar_token, $1) where id = $2 returning calendar_token',
+      [newCalendarToken(), userId],
+    );
+    const token = updated.rows[0]?.calendar_token;
+    if (token === undefined) throw new HttpError(401, 'unauthorized', 'Konto nicht gefunden');
+    return { token };
+  });
+
+  /** Neuer Link; der alte funktioniert ab sofort nicht mehr. */
+  app.post('/api/me/calendar', async (request) => {
+    const userId = await requireUser(request);
+    const token = newCalendarToken();
+    await db.query('update users set calendar_token = $1 where id = $2', [token, userId]);
+    return { token };
+  });
+
+  /**
+   * Der Kalender selbst. Ohne Anmeldung erreichbar, weil Kalender-Apps keine Tokens
+   * schicken können; der lange Zufallswert im Pfad ist der Schlüssel.
+   * Mit `?download=1` kommt er als Datei zum Speichern.
+   */
+  app.get<{ Params: { file: string }; Querystring: { download?: string } }>('/api/calendar/:file', async (request, reply) => {
+    const token = request.params.file.replace(/\.ics$/, '');
+    if (token.length < 20) throw new HttpError(404, 'not_found', 'Kalender nicht gefunden');
+    const users = await db.query<{ id: string; name: string; language: Language }>(
+      'select id, name, language from users where calendar_token = $1',
+      [token],
+    );
+    const user = users.rows[0];
+    if (user === undefined) throw new HttpError(404, 'not_found', 'Kalender nicht gefunden');
+
+    // Nur Strecken in Gruppen, in denen die Person noch ist.
+    const rows = await db.query<{
+      race_id: string;
+      race_name: string;
+      race_date: string | null;
+      start_time: string | null;
+      distance_km: number | null;
+      elevation_up_m: number | null;
+      cutoff: string | null;
+      status: 'registered' | 'paid';
+      participation_updated: string | number;
+      event_id: string;
+      event_name: string;
+      location: string | null;
+      website: string | null;
+      start_date: string;
+      end_date: string | null;
+      event_updated: string | number;
+      race_count: string | number;
+    }>(
+      `select r.id as race_id, r.name as race_name, r.start_date as race_date, r.start_time, r.distance_km,
+              r.elevation_up_m, r.cutoff, p.status, p.updated_at as participation_updated,
+              e.id as event_id, e.name as event_name, e.location, e.website, e.start_date, e.end_date,
+              e.updated_at as event_updated,
+              (select count(*) from races r2 where r2.event_id = e.id) as race_count
+       from participations p
+       join races r on r.id = p.race_id
+       join events e on e.id = r.event_id
+       join memberships m on m.group_id = e.group_id and m.user_id = p.user_id
+       where p.user_id = $1 and p.status in ('registered', 'paid')`,
+      [user.id],
+    );
+
+    const entries: CalendarEntry[] = rows.rows.map((r) => ({
+      raceId: r.race_id,
+      eventId: r.event_id,
+      eventName: r.event_name,
+      raceName: r.race_name,
+      raceCount: Number(r.race_count),
+      location: r.location,
+      website: r.website,
+      date: r.race_date ?? r.start_date,
+      endDate: r.race_date === null ? r.end_date : null,
+      startTime: r.start_time,
+      distanceKm: r.distance_km,
+      elevationUpM: r.elevation_up_m,
+      cutoff: r.cutoff,
+      status: r.status,
+      updatedAt: Math.max(Number(r.event_updated), Number(r.participation_updated)),
+    }));
+
+    const body = buildCalendar(entries, {
+      name: `RunPlanner – ${user.name}`,
+      language: user.language,
+      appUrl: `${request.protocol}://${request.host}`,
+      now: now(),
+    });
+    reply.header('content-type', 'text/calendar; charset=utf-8');
+    reply.header('cache-control', 'private, no-cache');
+    if (request.query.download !== undefined) {
+      reply.header('content-disposition', 'attachment; filename="runplanner.ics"');
+    }
+    return body;
   });
 
   // Laufgruppen ----------------------------------------------------------------
