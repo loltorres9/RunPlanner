@@ -143,3 +143,8 @@ export class Throttle {
     this.hits.delete(key);
   }
 }
+
+/** Zufälliger Schlüssel für den Kalender-Abo-Link (192 Bit). */
+export function newCalendarToken(): string {
+  return randomBytes(24).toString('base64url');
+}

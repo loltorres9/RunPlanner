@@ -717,3 +717,40 @@ describe('Teamstrecken', () => {
     expect(edited.body.races[0]!.participants.map((p) => p.teamId)).toEqual([null, null]);
   });
 });
+
+describe('Kalender-Abo', () => {
+  it('liefert nur angemeldete Strecken mit festen UIDs und lässt sich erneuern', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const ben = await register('ben@x.de', 'Ben', group.body.inviteCode);
+    const event = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, sampleEvent);
+    const [ultra, kurz] = event.body.races as [RunEvent['races'][number], RunEvent['races'][number]];
+    await call('PUT', `/api/races/${ultra.id}/participation`, anna.token, { status: 'paid' });
+    await call('PUT', `/api/races/${kurz.id}/participation`, anna.token, { status: 'interested' });
+    await call('PUT', `/api/races/${kurz.id}/participation`, ben.token, { status: 'registered' });
+
+    expect((await call('GET', '/api/me/calendar')).status).toBe(401);
+    const link = await call<{ token: string }>('GET', '/api/me/calendar', anna.token);
+    expect(link.body.token.length).toBeGreaterThanOrEqual(30);
+    // Gleicher Link beim nächsten Abruf.
+    expect((await call<{ token: string }>('GET', '/api/me/calendar', anna.token)).body.token).toBe(link.body.token);
+
+    const feed = await app.inject({ method: 'GET', url: `/api/calendar/${link.body.token}.ics` });
+    expect(feed.statusCode).toBe(200);
+    expect(feed.headers['content-type']).toContain('text/calendar');
+    const ics = feed.body.replace(/\r\n /g, '');
+    expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(1);
+    expect(ics).toContain(`UID:${ultra.id}@runplanner`);
+    expect(ics).toContain('DTSTART:20270501T060000');
+    expect(ics).toContain('SUMMARY:Chiemgau Trail – Ultra (70 km)');
+    expect(ics).not.toContain(kurz.id);
+
+    const download = await app.inject({ method: 'GET', url: `/api/calendar/${link.body.token}.ics?download=1` });
+    expect(download.headers['content-disposition']).toContain('attachment');
+
+    const renewed = await call<{ token: string }>('POST', '/api/me/calendar', anna.token);
+    expect(renewed.body.token).not.toBe(link.body.token);
+    expect((await app.inject({ method: 'GET', url: `/api/calendar/${link.body.token}.ics` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/api/calendar/${renewed.body.token}.ics` })).statusCode).toBe(200);
+  });
+});

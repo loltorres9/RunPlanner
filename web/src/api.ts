@@ -65,6 +65,8 @@ export const api = {
   pushUnsubscribe: (endpoint: string) => request<void>('POST', '/api/push/unsubscribe', { endpoint }),
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request<{ token: string }>('POST', '/api/me/password', body),
+  calendarLink: () => request<{ token: string }>('GET', '/api/me/calendar'),
+  renewCalendarLink: () => request<{ token: string }>('POST', '/api/me/calendar'),
 
   createGroup: (name: string) => request<GroupDetail>('POST', '/api/groups', { name }),
   group: (id: string) => request<GroupDetail>('GET', `/api/groups/${id}`),
