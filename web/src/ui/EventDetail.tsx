@@ -45,6 +45,7 @@ export function eventToInput(event: RunEvent): EventInput {
       feeNote: r.feeNote,
       cutoff: r.cutoff,
       teamSize: r.teamSize,
+      itraPoints: r.itraPoints,
     })),
   };
 }
@@ -199,6 +200,11 @@ function RaceCard(props: {
           </span>
         )}
         {race.cutoff && <span>⏱ {race.cutoff}</span>}
+        {race.itraPoints !== null && (
+          <span className="itra" title={t.event.itraPoints}>
+            ITRA {race.itraPoints}
+          </span>
+        )}
       </div>
       {race.feeNote && <p className="muted small">{race.feeNote}</p>}
 

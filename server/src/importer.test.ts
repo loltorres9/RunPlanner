@@ -48,7 +48,13 @@ describe('toDraft', () => {
         currency: 'eur',
         multiDay: false,
         races: [
-          { name: 'Ultra', distanceKm: 70, elevationUpM: 3800.4, elevationDownM: -5, startDate: null, startTime: '6:00', fee: 95, feeNote: null, cutoff: '14 h' },
+          { name: 'Ultra', distanceKm: 70, elevationUpM: 3800.4, elevationDownM: -5, startDate: null, startTime: '6:00', fee: 95, feeNote: null, cutoff: '14 h', itraPoints: 3 },
+          { name: 'Kurz', distanceKm: 10, elevationUpM: null, elevationDownM: null, startDate: null, startTime: null, fee: null, feeNote: null, cutoff: null, itraPoints: 9 },
+        ],
+        accommodations: [
+          { name: ' Hotel Post ', url: 'https://post.example/zimmer', price: 'ab 79 €', notes: null },
+          { name: 'Camping', url: 'javascript:alert(1)', price: null, notes: '2 km zum Start' },
+          { name: ' ', url: null, price: null, notes: null },
         ],
         warnings: ['Gebühren vom Vorjahr'],
       },
@@ -58,7 +64,12 @@ describe('toDraft', () => {
     expect(draft.endDate).toBeNull();
     expect(draft.registrationDeadline).toBeNull();
     expect(draft.currency).toBe('EUR');
-    expect(draft.races?.[0]).toMatchObject({ elevationUpM: 3800, elevationDownM: null, startTime: null, fee: 95 });
+    expect(draft.races?.[0]).toMatchObject({ elevationUpM: 3800, elevationDownM: null, startTime: null, fee: 95, itraPoints: 3 });
+    expect(draft.races?.[1]?.itraPoints).toBeNull();
+    expect(draft.accommodations).toEqual([
+      { name: 'Hotel Post', url: 'https://post.example/zimmer', price: 'ab 79 €', notes: null, nights: [] },
+      { name: 'Camping', url: null, price: null, notes: '2 km zum Start', nights: [] },
+    ]);
     expect(warnings).toEqual(['Gebühren vom Vorjahr']);
   });
 

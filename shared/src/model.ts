@@ -46,8 +46,30 @@ export const raceInputSchema = z.object({
   cutoff: optionalText(120),
   /** Teamstrecke: so viele Personen laufen als ein Team, die Gebühr gilt pro Team. */
   teamSize: z.number().int().min(2).max(20).nullish(),
+  /** ITRA-Punkte der Strecke (0 bis 6), falls bekannt. */
+  itraPoints: z.number().int().min(0).max(6).nullish(),
 });
 export type RaceInput = z.input<typeof raceInputSchema>;
+
+export const accommodationInputSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  url: z
+    .string()
+    .trim()
+    .max(500)
+    .nullish()
+    .transform((value) => (value === undefined || value === null || value === '' ? null : value))
+    .refine((value) => value === null || /^https?:\/\//i.test(value), 'Link muss mit http(s):// beginnen'),
+  /** Freitext, z. B. "ca. 90 € pro Nacht". */
+  price: optionalText(120),
+  notes: optionalText(1000),
+  /** Nächte, für die der Vorschlag gedacht ist (Etappenorte); leer heißt alle. */
+  nights: z.array(isoDate).max(60).default([]),
+});
+export type AccommodationInput = z.input<typeof accommodationInputSchema>;
+
+/** Vorschlag im Veranstaltungsformular: mit `id` wird ein vorhandener geändert. */
+export const eventAccommodationSchema = accommodationInputSchema.extend({ id: z.string().nullish() });
 
 export const eventInputSchema = z
   .object({
@@ -68,6 +90,13 @@ export const eventInputSchema = z
     accommodationNotes: optionalText(2000),
     notes: optionalText(5000),
     races: z.array(raceInputSchema).max(30).default([]),
+    /**
+     * Unterkunfts-Vorschläge aus dem Formular. Fehlt das Feld, bleiben die Vorschläge
+     * unverändert; nicht aufgeführte werden nur über `removeAccommodationIds` gelöscht,
+     * damit gleichzeitig in der Veranstaltung ergänzte Vorschläge erhalten bleiben.
+     */
+    accommodations: z.array(eventAccommodationSchema).max(30).optional(),
+    removeAccommodationIds: z.array(z.string().min(1)).max(60).optional(),
   })
   .refine((event) => !event.endDate || event.endDate >= event.startDate, {
     message: 'Enddatum liegt vor dem Startdatum',
@@ -135,6 +164,8 @@ export interface Race {
   cutoff: string | null;
   /** Teamgröße bei Teamstrecken, sonst `null`. */
   teamSize: number | null;
+  /** ITRA-Punkte (0 bis 6), `null` wenn unbekannt. */
+  itraPoints: number | null;
   participants: Participation[];
   /** Teams (nur bei Teamstrecken). */
   teams: RaceTeam[];
@@ -198,22 +229,6 @@ export const commentInputSchema = z.object({ text: z.string().trim().min(1).max(
 export const STAY_CHOICES = ['none', 'suggested', 'other'] as const;
 export type StayChoice = (typeof STAY_CHOICES)[number];
 
-export const accommodationInputSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  url: z
-    .string()
-    .trim()
-    .max(500)
-    .nullish()
-    .transform((value) => (value === undefined || value === null || value === '' ? null : value))
-    .refine((value) => value === null || /^https?:\/\//i.test(value), 'Link muss mit http(s):// beginnen'),
-  /** Freitext, z. B. "ca. 90 € pro Nacht". */
-  price: optionalText(120),
-  notes: optionalText(1000),
-  /** Nächte, für die der Vorschlag gedacht ist (Etappenorte); leer heißt alle. */
-  nights: z.array(isoDate).max(60).default([]),
-});
-export type AccommodationInput = z.input<typeof accommodationInputSchema>;
 
 export const stayInputSchema = z
   .object({

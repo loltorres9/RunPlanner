@@ -26,7 +26,10 @@ export function EventCard(props: { event: RunEvent; showAdded?: boolean; isNew?:
   const unread = hasUnreadComments(event, me.user.id);
   const people = eventPeople(event);
   const distances = event.races
-    .map((r) => (r.distanceKm !== null ? `${number(r.distanceKm)} km` : r.name))
+    .map((r) => {
+      const label = r.distanceKm !== null ? `${number(r.distanceKm)} km` : r.name;
+      return r.itraPoints !== null ? `${label} (ITRA ${r.itraPoints})` : label;
+    })
     .slice(0, 5)
     .join(' · ');
 

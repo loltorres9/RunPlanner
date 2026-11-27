@@ -1118,3 +1118,20 @@ a.version {
   gap: 6px;
   word-break: break-word;
 }
+.stats .itra {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.toggle select {
+  width: auto;
+}
+.align-end {
+  align-self: flex-end;
+}
+.align-start {
+  align-self: flex-start;
+}

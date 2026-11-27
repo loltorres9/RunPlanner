@@ -273,6 +273,40 @@ describe('Veranstaltungen', () => {
 });
 
 describe('Unterkünfte', () => {
+  it('legt Vorschläge über das Formular an, ändert und entfernt sie gezielt', async () => {
+    const anna = await register('anna@x.de', 'Anna');
+    const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
+    const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, {
+      ...sampleEvent,
+      accommodations: [
+        { name: 'Hotel Adler', url: 'https://adler.example', price: '90 €' },
+        { name: 'Jugendherberge', nights: ['2027-05-02'] },
+      ],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.accommodations.map((a) => [a.name, a.url, a.price, a.nights])).toEqual([
+      ['Hotel Adler', 'https://adler.example', '90 €', []],
+      ['Jugendherberge', null, null, ['2027-05-02']],
+    ]);
+    const [adler, herberge] = created.body.accommodations;
+    // Parallel in der Veranstaltung ergänzt: bleibt beim Speichern des Formulars erhalten.
+    await call<RunEvent>('POST', `/api/events/${created.body.id}/accommodations`, anna.token, { name: 'Camping' });
+    const updated = await call<RunEvent>('PUT', `/api/events/${created.body.id}`, anna.token, {
+      ...sampleEvent,
+      accommodations: [{ id: adler!.id, name: 'Hotel Adler', price: '95 €' }, { name: 'Pension Rose' }],
+      removeAccommodationIds: [herberge!.id],
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.accommodations.map((a) => [a.name, a.price])).toEqual([
+      ['Hotel Adler', '95 €'],
+      ['Camping', null],
+      ['Pension Rose', null],
+    ]);
+    // Ohne das Feld bleiben die Vorschläge unverändert.
+    const untouched = await call<RunEvent>('PUT', `/api/events/${created.body.id}`, anna.token, sampleEvent);
+    expect(untouched.body.accommodations).toHaveLength(3);
+  });
+
   it('schlägt Unterkünfte vor und merkt sich, wer wo schläft', async () => {
     const anna = await register('anna@x.de', 'Anna');
     const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
@@ -454,9 +488,10 @@ describe('Streckenverlauf', () => {
     const group = await call<GroupDetail>('POST', '/api/groups', anna.token, { name: 'Familie' });
     const created = await call<RunEvent>('POST', `/api/groups/${group.body.id}/events`, anna.token, {
       ...sampleEvent,
-      races: [{ name: 'Ohne Werte' }, { name: 'Mit Werten', distanceKm: 21, elevationUpM: 900 }],
+      races: [{ name: 'Ohne Werte' }, { name: 'Mit Werten', distanceKm: 21, elevationUpM: 900, itraPoints: 2 }],
     });
     const [empty, filled] = created.body.races;
+    expect([empty!.itraPoints, filled!.itraPoints]).toEqual([null, 2]);
     expect(empty!.track).toBe(null);
     const track = {
       name: 'Basetrail',

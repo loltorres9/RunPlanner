@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { EventInput, RaceInput } from '@runplanner/shared';
+import { notesToAccommodations, type AccommodationInput, type EventInput, type RaceInput, type RunEvent } from '@runplanner/shared';
 import { api, ApiError } from '../api.js';
 import { useI18n } from '../i18n/index.js';
 import { navigate, useApp } from '../state.js';
@@ -25,8 +25,21 @@ interface RaceDraft {
   /** Teamstrecke mit Teamgröße. */
   team: boolean;
   teamSize: string;
+  /** ITRA-Punkte als Text, leer = unbekannt. */
+  itraPoints: string;
   /** Starttag fiel durch eine Änderung des Zeitraums heraus und wurde geleert. */
   dayCleared: boolean;
+}
+
+/** Unterkunfts-Vorschlag im Formular; `id` bei vorhandenen. */
+interface AccommodationDraft {
+  key: string;
+  id: string | null;
+  name: string;
+  url: string;
+  price: string;
+  notes: string;
+  nights: string[];
 }
 
 interface Draft {
@@ -41,6 +54,9 @@ interface Draft {
   accommodationNotes: string;
   notes: string;
   races: RaceDraft[];
+  accommodations: AccommodationDraft[];
+  /** Vorhandene Vorschläge, die im Formular entfernt wurden. */
+  removedAccommodations: string[];
 }
 
 let keySeq = 0;
@@ -60,8 +76,24 @@ function toDraft(input: EventInput): Draft {
     accommodationNotes: str(input.accommodationNotes),
     notes: str(input.notes),
     races: (input.races ?? []).map(raceToDraft),
+    accommodations: (input.accommodations ?? []).map(accommodationToDraft),
+    removedAccommodations: [],
   };
 }
+
+function accommodationToDraft(a: AccommodationInput & { id?: string | null }): AccommodationDraft {
+  return {
+    key: nextKey(),
+    id: a.id ?? null,
+    name: a.name,
+    url: str(a.url),
+    price: str(a.price),
+    notes: str(a.notes),
+    nights: a.nights ?? [],
+  };
+}
+
+const emptyAccommodation = (): AccommodationDraft => accommodationToDraft({ name: '' });
 
 function raceToDraft(race: RaceInput): RaceDraft {
   return {
@@ -78,6 +110,7 @@ function raceToDraft(race: RaceInput): RaceDraft {
     cutoff: str(race.cutoff),
     team: !!race.teamSize,
     teamSize: str(race.teamSize ?? 3),
+    itraPoints: str(race.itraPoints),
     dayCleared: false,
   };
 }
@@ -139,17 +172,44 @@ function fromDraft(draft: Draft): EventInput {
         feeNote: r.feeNote || null,
         cutoff: r.cutoff || null,
         teamSize: r.team ? teamSizeOf(r.teamSize) : null,
+        itraPoints: r.itraPoints === '' ? null : Number(r.itraPoints),
       })),
+    accommodations: draft.accommodations
+      .filter((a) => a.name.trim() !== '')
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        url: a.url.trim() || null,
+        price: a.price || null,
+        notes: a.notes || null,
+        // Nächte außerhalb eines geänderten Zeitraums fallen weg.
+        nights: a.nights.filter((n) => draft.endDate && n >= draft.startDate && n <= draft.endDate),
+      })),
+    removeAccommodationIds: draft.removedAccommodations,
   };
 }
 
 const blank: Draft = toDraft({ name: '', startDate: '', currency: 'EUR', races: [] });
 
 export function EventForm(props: { eventId?: string }) {
-  const { t, lang, date } = useI18n();
-  const { events, groupId, putEvent, importEnabled } = useApp();
+  const { t } = useI18n();
+  const { events } = useApp();
   const existing = props.eventId ? events.find((e) => e.id === props.eventId) : undefined;
-  const [draft, setDraft] = useState<Draft>(() => (existing ? toDraft(eventToInput(existing)) : { ...blank, races: [emptyRace()] }));
+  // Erst rendern, wenn die Veranstaltung geladen ist, sonst startet das Formular leer
+  // (z. B. nach Neuladen direkt auf der Bearbeiten-Seite).
+  if (props.eventId && !existing) return <p className="muted">{t.common.loading}</p>;
+  return <EventFormLoaded key={existing?.id ?? 'new'} existing={existing} />;
+}
+
+function EventFormLoaded(props: { existing: RunEvent | undefined }) {
+  const { t, f, lang, date } = useI18n();
+  const { groupId, putEvent, importEnabled } = useApp();
+  const existing = props.existing;
+  const [draft, setDraft] = useState<Draft>(() =>
+    existing
+      ? { ...toDraft(eventToInput(existing)), accommodations: existing.accommodations.map(accommodationToDraft) }
+      : { ...blank, races: [emptyRace()] },
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dateMissing, setDateMissing] = useState(false);
@@ -161,11 +221,24 @@ export function EventForm(props: { eventId?: string }) {
     warnings: [],
   });
 
-  if (props.eventId && !existing) return <p className="muted">{t.common.loading}</p>;
-
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const setRace = (key: string, patch: Partial<RaceDraft>) =>
     setDraft((d) => ({ ...d, races: d.races.map((r) => (r.key === key ? { ...r, ...patch } : r)) }));
+  const setAccommodation = (key: string, patch: Partial<AccommodationDraft>) =>
+    setDraft((d) => ({ ...d, accommodations: d.accommodations.map((a) => (a.key === key ? { ...a, ...patch } : a)) }));
+  const removeAccommodation = (a: AccommodationDraft) =>
+    setDraft((d) => ({
+      ...d,
+      accommodations: d.accommodations.filter((x) => x.key !== a.key),
+      removedAccommodations: a.id ? [...d.removedAccommodations, a.id] : d.removedAccommodations,
+    }));
+  /** Freitext-Notizen in einzelne Vorschläge aufteilen; die Notizen werden dabei geleert. */
+  const notesToSuggestions = () =>
+    setDraft((d) => ({
+      ...d,
+      accommodations: [...d.accommodations, ...notesToAccommodations(d.accommodationNotes).map(accommodationToDraft)],
+      accommodationNotes: '',
+    }));
 
   async function runImport() {
     if (!importUrl.trim()) return;
@@ -176,8 +249,21 @@ export function EventForm(props: { eventId?: string }) {
       // Beim Bearbeiten vorhandene Felder nicht mit leeren Werten überschreiben.
       setDraft((d) => ({
         ...d,
-        ...Object.fromEntries(Object.entries(imported).filter(([k, v]) => k !== 'races' && v !== '' && v !== false)),
+        ...Object.fromEntries(
+          Object.entries(imported).filter(
+            ([k, v]) => !['races', 'accommodations', 'removedAccommodations'].includes(k) && v !== '' && v !== false,
+          ),
+        ),
         races: imported.races.length > 0 ? imported.races : d.races,
+        // Nennt die Website Unterkünfte, ist eine Übernachtung wohl ein Thema.
+        accommodationNeeded: d.accommodationNeeded || imported.accommodations.length > 0,
+        // Unterkunftstipps der Website ergänzen, ohne vorhandene doppelt aufzunehmen.
+        accommodations: [
+          ...d.accommodations,
+          ...imported.accommodations.filter(
+            (a) => !d.accommodations.some((x) => x.name.trim().toLowerCase() === a.name.trim().toLowerCase()),
+          ),
+        ],
       }));
       setImportState({ busy: false, message: t.import.done, warnings: result.warnings });
       setImported(true);
@@ -307,10 +393,64 @@ export function EventForm(props: { eventId?: string }) {
         </label>
         {draft.accommodationNeeded && (
           <>
+            <h3>{t.stay.suggestions}</h3>
+            <p className="muted small">{t.event.suggestionsHint}</p>
+            {draft.accommodations.map((a) => (
+              <div key={a.key} className="suggestion stack">
+                <div className="grid2">
+                  <label>
+                    {t.stay.name}
+                    <input value={a.name} onChange={(e) => setAccommodation(a.key, { name: e.target.value })} maxLength={200} />
+                  </label>
+                  <label>
+                    {t.stay.price}
+                    <input
+                      value={a.price}
+                      placeholder={t.stay.pricePlaceholder}
+                      onChange={(e) => setAccommodation(a.key, { price: e.target.value })}
+                      maxLength={120}
+                    />
+                  </label>
+                </div>
+                <label>
+                  {t.stay.link}
+                  <input type="url" value={a.url} placeholder="https://" onChange={(e) => setAccommodation(a.key, { url: e.target.value })} />
+                </label>
+                <div className="row gap-s">
+                  <label className="grow">
+                    {t.stay.notes}
+                    <input value={a.notes} onChange={(e) => setAccommodation(a.key, { notes: e.target.value })} maxLength={1000} />
+                  </label>
+                  <button
+                    type="button"
+                    className="link danger align-end"
+                    aria-label={t.common.delete}
+                    onClick={() => {
+                      if (!a.id || window.confirm(f(t.stay.deleteConfirm, { name: a.name }))) removeAccommodation(a);
+                    }}
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={() => setDraft((d) => ({ ...d, accommodations: [...d.accommodations, emptyAccommodation()] }))}>
+              <Icon name="plus" size={16} /> {t.stay.suggest}
+            </button>
             <label>
               {t.event.accommodationNotes}
-              <textarea rows={2} value={draft.accommodationNotes} onChange={(e) => set('accommodationNotes', e.target.value)} />
+              <textarea
+                rows={2}
+                value={draft.accommodationNotes}
+                placeholder={t.event.accommodationNotesPlaceholder}
+                onChange={(e) => set('accommodationNotes', e.target.value)}
+              />
             </label>
+            {draft.accommodationNotes.trim() !== '' && (
+              <button type="button" className="small align-start" onClick={notesToSuggestions}>
+                {t.event.notesToSuggestions}
+              </button>
+            )}
           </>
         )}
       </section>
@@ -405,6 +545,17 @@ export function EventForm(props: { eventId?: string }) {
                 />
               </label>
             )}
+            <label className="toggle">
+              {t.event.itraPoints}
+              <select value={race.itraPoints} onChange={(e) => setRace(race.key, { itraPoints: e.target.value })}>
+                <option value="">{t.event.itraUnknown}</option>
+                {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <label>
             {t.event.feeNote}
