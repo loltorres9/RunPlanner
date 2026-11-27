@@ -242,6 +242,7 @@ create index if not exists settlements_group_idx on settlements (group_id, creat
 
 -- Teamstrecken: Teamgröße an der Strecke, Teams mit einer zahlenden Person.
 alter table races add column if not exists team_size integer;
+alter table races add column if not exists itra_points integer;
 
 create table if not exists race_teams (
   id text primary key,

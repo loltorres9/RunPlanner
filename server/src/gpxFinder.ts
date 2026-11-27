@@ -3,17 +3,22 @@
  *
  * Ablauf: Startseite laden, dazu bis zu sechs passende Unterseiten derselben Website
  * (z. B. „Strecken“, „Downloads“). Dort alle Links auf GPX-Dateien sammeln, die Dateien
- * laden und auswerten. Links zu Diensten wie Komoot oder Strava lassen sich nicht ohne
+ * laden und auswerten. ZIP-Archive werden ebenfalls geladen und die GPX-Dateien darin
+ * einzeln angeboten (Adresse `archiv.zip#datei.gpx`). Links zu Diensten wie Komoot oder Strava lassen sich nicht ohne
  * Anmeldung laden; sie werden nur gemeldet. Die Zuordnung zu den Strecken übernimmt
  * die App (KI oder Distanz), siehe app.ts.
  */
 
 import { parseGpxText, type ExternalRoute, type TrackInput } from '@runplanner/shared';
-import { decodeEntities, fetchPage, fetchPublic, ImportError } from './importer.js';
+import { decodeEntities, fetchPage, fetchPublic, fetchPublicBytes, ImportError } from './importer.js';
+import { listZip, readZipEntry } from './zip.js';
 
 const MAX_SUBPAGES = 6;
-const MAX_FILES = 12;
+const MAX_FILES = 20;
 const MAX_GPX_BYTES = 15 * 1024 * 1024;
+const MAX_ZIPS = 3;
+const MAX_ZIP_BYTES = 40 * 1024 * 1024;
+const ZIP_CACHE_MS = 10 * 60 * 1000;
 
 export interface FoundFile {
   url: string;
@@ -44,10 +49,11 @@ const SERVICES: [RegExp, string][] = [
 /** Unterseiten, auf denen Strecken üblicherweise stehen. */
 const SUBPAGE_HINT =
   /gpx|download|strecke|route|course|parcours|percorso|tracc?e|track|distan|karte|map|lauf|läufe|rennen|race|wettkampf|trail|etappe|stage|ultra|marathon|info/i;
-const SKIP_FILE = /\.(pdf|jpe?g|png|gif|webp|svg|zip|mp4|mov|docx?|xlsx?|ics|kmz)(\?|#|$)/i;
+const SKIP_FILE = /\.(pdf|jpe?g|png|gif|webp|svg|mp4|mov|docx?|xlsx?|ics|kmz)(\?|#|$)/i;
 
 export interface PageLinks {
   gpx: { url: string; label: string }[];
+  zip: { url: string; label: string }[];
   external: ExternalRoute[];
   subpages: { url: string; score: number }[];
 }
@@ -55,6 +61,10 @@ export interface PageLinks {
 function isGpxUrl(url: URL): boolean {
   const full = `${url.pathname}${url.search}`.toLowerCase();
   return /\.gpx($|[?#&])/.test(full) || /[?&](format|type|export|download)=gpx\b/.test(full) || /\/gpx\/?$/.test(url.pathname.toLowerCase());
+}
+
+function isZipUrl(url: URL): boolean {
+  return /\.zip($|[?#&])/.test(`${url.pathname}${url.search}`.toLowerCase());
 }
 
 function cleanLabel(html: string): string {
@@ -68,6 +78,7 @@ function cleanLabel(html: string): string {
 export function extractLinks(html: string, pageUrl: string): PageLinks {
   const base = new URL(pageUrl);
   const gpx = new Map<string, string>();
+  const zip = new Map<string, string>();
   const external = new Map<string, ExternalRoute>();
   const subpages = new Map<string, number>();
 
@@ -83,6 +94,10 @@ export function extractLinks(html: string, pageUrl: string): PageLinks {
     const key = url.toString();
     if (isGpxUrl(url)) {
       if (!gpx.has(key) || (label && !gpx.get(key))) gpx.set(key, label);
+      return;
+    }
+    if (isZipUrl(url)) {
+      if (!zip.has(key) || (label && !zip.get(key))) zip.set(key, label);
       return;
     }
     const service = SERVICES.find(([pattern]) => pattern.test(url.hostname))?.[1];
@@ -118,6 +133,7 @@ export function extractLinks(html: string, pageUrl: string): PageLinks {
 
   return {
     gpx: [...gpx].map(([url, label]) => ({ url, label })),
+    zip: [...zip].map(([url, label]) => ({ url, label })),
     external: [...external.values()],
     subpages: [...subpages].map(([url, score]) => ({ url, score })).sort((a, b) => b.score - a.score),
   };
@@ -131,6 +147,70 @@ function fileNameOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+const zipCache = new Map<string, { at: number; data: Promise<Buffer> }>();
+
+/** Lädt ein ZIP-Archiv; kurz zwischengespeichert, weil „Übernehmen“ es erneut braucht. */
+function downloadZip(url: string): Promise<Buffer> {
+  const now = Date.now();
+  for (const [key, entry] of zipCache) if (now - entry.at > ZIP_CACHE_MS) zipCache.delete(key);
+  const cached = zipCache.get(url);
+  if (cached) return cached.data;
+  const data = fetchPublicBytes(url, {
+    accept: 'application/zip,application/octet-stream,*/*;q=0.5',
+    types: /zip|octet-stream|force-download|binary|download/i,
+    maxBytes: MAX_ZIP_BYTES,
+  }).then((file) => {
+    if (file.bytes.length >= MAX_ZIP_BYTES) throw new ImportError('fetch_failed', 'ZIP-Datei ist zu groß');
+    return file.bytes;
+  });
+  data.catch(() => zipCache.delete(url));
+  zipCache.set(url, { at: now, data });
+  while (zipCache.size > MAX_ZIPS) zipCache.delete(zipCache.keys().next().value!);
+  return data;
+}
+
+/** GPX-Einträge eines Archivs, ohne macOS-Beiwerk. */
+function gpxEntries(data: Buffer) {
+  return listZip(data).filter((e) => /\.gpx$/i.test(e.name) && !/(^|\/)(__MACOSX\/|\._)/.test(e.name));
+}
+
+function baseName(path: string): string {
+  return path.split('/').pop() ?? path;
+}
+
+/** Alle GPX-Dateien eines Archivs; kaputte werden übersprungen. */
+async function filesInZip(url: string, label: string): Promise<FoundFile[]> {
+  const data = await downloadZip(url);
+  const found: FoundFile[] = [];
+  for (const entry of gpxEntries(data).slice(0, MAX_FILES)) {
+    try {
+      const track = parseGpxText(new TextDecoder().decode(readZipEntry(data, entry, MAX_GPX_BYTES)));
+      const fileName = baseName(entry.name);
+      found.push({
+        url: `${url}#${encodeURIComponent(entry.name)}`,
+        fileName,
+        label: track.name || fileName.replace(/\.gpx$/i, '') || label,
+        track,
+      });
+    } catch {
+      // Kaputte Datei im Archiv: überspringen.
+    }
+  }
+  return found;
+}
+
+async function download(url: string): Promise<TrackInput> {
+  const hash = url.indexOf('#');
+  if (hash > 0 && isZipUrl(new URL(url.slice(0, hash)))) {
+    const name = decodeURIComponent(url.slice(hash + 1));
+    const data = await downloadZip(url.slice(0, hash));
+    const entry = gpxEntries(data).find((e) => e.name === name);
+    if (!entry) throw new ImportError('fetch_failed', 'Datei nicht im Archiv gefunden');
+    return parseGpxText(new TextDecoder().decode(readZipEntry(data, entry, MAX_GPX_BYTES)));
+  }
+  return downloadGpx(url);
 }
 
 async function downloadGpx(url: string): Promise<TrackInput> {
@@ -177,9 +257,11 @@ export function createGpxFinder(): GpxFinder {
       for (const links of loaded) if (links) pages.push(links);
 
       const gpx = new Map<string, string>();
+      const zip = new Map<string, string>();
       const external = new Map<string, ExternalRoute>();
       for (const links of pages) {
         for (const link of links.gpx) if (!gpx.get(link.url)) gpx.set(link.url, link.label);
+        for (const link of links.zip) if (!zip.get(link.url)) zip.set(link.url, link.label);
         for (const route of links.external) external.set(route.url, route);
       }
       const files = await pool([...gpx].slice(0, MAX_FILES), 4, async ([url, label]): Promise<FoundFile | null> => {
@@ -190,12 +272,36 @@ export function createGpxFinder(): GpxFinder {
           return null;
         }
       });
+      const direct = files.filter((f): f is FoundFile => f !== null);
+      // Archive, deren Name oder Linktext nach Strecken klingt, zuerst.
+      const zips = [...zip]
+        .map(([url, label]) => ({ url, label, score: /gpx|strecke|track|route|course|parcours/i.test(`${label} ${url}`) ? 1 : 0 }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_ZIPS);
+      const fromZips = (
+        await pool(zips, 2, async ({ url, label }) => {
+          try {
+            return await filesInZip(url, label);
+          } catch {
+            return [];
+          }
+        })
+      ).flat();
+      // Dieselbe Strecke direkt und im Archiv: nur einmal anbieten.
+      const sameTrack = (f: FoundFile) => `${f.track.points.length}|${f.track.distanceKm.toFixed(2)}|${f.track.gainM ?? ''}`;
+      const seen = new Set(direct.map(sameTrack));
+      const unique = fromZips.filter((f) => {
+        const key = sameTrack(f);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       return {
-        files: files.filter((f): f is FoundFile => f !== null),
+        files: [...direct, ...unique].slice(0, MAX_FILES),
         external: [...external.values()].slice(0, 10),
         pagesChecked: pages.length,
       };
     },
-    download: downloadGpx,
+    download,
   };
 }

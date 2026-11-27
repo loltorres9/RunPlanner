@@ -39,6 +39,7 @@ const race = (fee: number | null, participants: RunEvent['races'][number]['parti
   feeNote: null,
   cutoff: null,
   teamSize: null,
+  itraPoints: null,
   participants,
   teams: [],
 });

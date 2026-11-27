@@ -53,6 +53,11 @@ export function StaysSection(props: { event: RunEvent; onChange: Run }) {
         <Icon name="bed" size={18} /> {t.stay.title}
       </h2>
       {event.accommodationNotes && <p className="pre small">{event.accommodationNotes}</p>}
+      {event.accommodationNotes && event.accommodations.length === 0 && (
+        <a className="small" href={`#/event/${event.id}/edit`}>
+          {t.stay.convertNotes}
+        </a>
+      )}
 
       <MyStay event={event} onChange={onChange} />
 

@@ -185,6 +185,7 @@ interface RaceRow {
   fee_note: string | null;
   cutoff: string | null;
   team_size: number | null;
+  itra_points: number | null;
 }
 
 interface ParticipationRow {
@@ -453,6 +454,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         feeNote: r.fee_note,
         cutoff: r.cutoff,
         teamSize: r.team_size,
+        itraPoints: r.itra_points,
         participants: byRace.get(r.id) ?? [],
         teams: r.team_size === null ? [] : (teamsByRace.get(r.id) ?? []),
         track: trackByRace.get(r.id) ?? null,
@@ -511,13 +513,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         race.cutoff,
         position,
         race.teamSize ?? null,
+        race.itraPoints ?? null,
       ];
       if (race.id && existingIds.has(race.id)) {
         keep.add(race.id);
         await tx.query(
           `update races set name = $1, distance_km = $2, elevation_up_m = $3, elevation_down_m = $4,
            start_date = $5, start_time = $6, fee = $7, fee_note = $8, cutoff = $9, position = $10,
-           team_size = $11 where id = $12`,
+           team_size = $11, itra_points = $12 where id = $13`,
           [...values, race.id],
         );
         // Keine Teamstrecke mehr: Teams auflösen, die Anmeldungen bleiben.
@@ -525,7 +528,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       } else {
         await tx.query(
           `insert into races (name, distance_km, elevation_up_m, elevation_down_m, start_date, start_time,
-           fee, fee_note, cutoff, position, team_size, id, event_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+           fee, fee_note, cutoff, position, team_size, itra_points, id, event_id)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
           [...values, newId(), eventId],
         );
       }
@@ -533,6 +537,38 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const remove = [...existingIds].filter((id) => !keep.has(id));
     if (remove.length > 0) {
       await tx.query('delete from races where id = any($1::text[])', [remove]);
+    }
+  }
+
+  /**
+   * Unterkunfts-Vorschläge aus dem Formular: vorhandene ändern, neue anlegen, ausdrücklich
+   * entfernte löschen. Andere Vorschläge der Veranstaltung bleiben unberührt.
+   */
+  async function writeAccommodations(tx: Db, eventId: string, input: EventInputParsed, userId: string): Promise<void> {
+    const existing = await tx.query<{ id: string }>('select id from accommodations where event_id = $1', [eventId]);
+    const ids = new Set(existing.rows.map((r) => r.id));
+    const remove = (input.removeAccommodationIds ?? []).filter((id) => ids.has(id));
+    if (remove.length > 0) await tx.query('delete from accommodations where id = any($1::text[])', [remove]);
+    const at = now();
+    for (const [index, a] of (input.accommodations ?? []).entries()) {
+      if (a.id && remove.includes(a.id)) continue;
+      if (a.id && ids.has(a.id)) {
+        await tx.query('update accommodations set name = $1, url = $2, price = $3, notes = $4, nights = $5 where id = $6', [
+          a.name,
+          a.url,
+          a.price,
+          a.notes,
+          joinNights(a.nights),
+          a.id,
+        ]);
+      } else {
+        await tx.query(
+          `insert into accommodations (id, event_id, name, url, price, notes, nights, created_by, created_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          // Fortlaufende Zeit, damit die Reihenfolge aus dem Formular erhalten bleibt.
+          [newId(), eventId, a.name, a.url, a.price, a.notes, joinNights(a.nights), userId, at + index],
+        );
+      }
     }
   }
 
@@ -857,6 +893,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         [...eventValues(input), eventId, request.params.id, userId, at, at],
       );
       await writeRaces(tx, eventId, input.races);
+      await writeAccommodations(tx, eventId, input, userId);
     });
     reply.code(201);
     const created = await loadEvent(eventId, userId);
@@ -883,6 +920,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         [...eventValues(input), now(), existing.id],
       );
       await writeRaces(tx, existing.id, input.races);
+      await writeAccommodations(tx, existing.id, input, userId);
     });
     return loadEvent(existing.id, userId);
   });
