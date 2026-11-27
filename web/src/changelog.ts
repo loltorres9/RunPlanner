@@ -14,6 +14,26 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.16.0',
+    date: '2026-11-27',
+    de: [
+      'Unterkünfte: Im Formular lassen sich unter „Unterkunft nötig“ gleich konkrete Vorschläge mit Name, Link, Preis und Notiz anlegen, die danach jede Person auswählen und als gebucht markieren kann.',
+      'Vorhandene Notizen zur Unterkunft macht „Notizen als Vorschläge übernehmen“ zu einzelnen Vorschlägen (eine Zeile oder ein Link je Vorschlag).',
+      'Der Website-Import übernimmt Unterkunftstipps der Veranstaltung als Vorschläge.',
+      'ITRA-Punkte pro Strecke (0 bis 6): im Formular wählbar, als „ITRA 3“ bei der Strecke und in der Liste. Der Import liest sie, wenn die Website sie nennt.',
+      'GPX-Suche geht weiter: ZIP-Dateien werden entpackt, zwei Ebenen Unterseiten (auch Subdomains), eingebettete Karten, KML-, KMZ- und TCX-Dateien, öffentliche Dropbox- und Google-Drive-Links.',
+      'Öffentliche Touren bei Komoot und Outdooractive werden wenn möglich direkt geladen, sonst bleibt es beim Link.',
+    ],
+    en: [
+      'Accommodation: under “Accommodation needed” the form now takes specific suggestions with name, link, price and note, which everyone can pick later and mark as booked.',
+      '“Turn notes into suggestions” splits existing accommodation notes into separate suggestions (one line or link each).',
+      'Website import adds accommodation tips from the event page as suggestions.',
+      'ITRA points per race (0 to 6): set in the form, shown as “ITRA 3” on the race and in the list. Import reads them when the website states them.',
+      'GPX search goes further: unpacks ZIP files, follows two levels of subpages (subdomains too), embedded maps, KML, KMZ and TCX files, public Dropbox and Google Drive links.',
+      'Public tours on Komoot and Outdooractive are loaded directly where possible, otherwise they stay a link.',
+    ],
+  },
+  {
     version: '0.15.0',
     date: '2026-11-23',
     de: [

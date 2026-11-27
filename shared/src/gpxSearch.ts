@@ -71,13 +71,13 @@ function readPoints(xml: string, tag: 'trkpt' | 'rtept'): TrackPoint[] {
   return points;
 }
 
-function validPoint(lat: number, lon: number, ele: number | null): TrackPoint | null {
+export function validPoint(lat: number, lon: number, ele: number | null): TrackPoint | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   return [lat, lon, ele !== null && Number.isFinite(ele) && ele > -500 && ele < 9000 ? ele : null];
 }
 
-/** Kennzahlen berechnen und die Punkte ausdünnen. */
-function finishTrack(points: TrackPoint[], name: string | null): TrackInput {
+/** Kennzahlen berechnen und die Punkte ausdünnen (auch für Punkte aus Routen-Diensten). */
+export function finishTrack(points: TrackPoint[], name: string | null): TrackInput {
   if (points.length < 2) throw new GpxParseError('Keine Streckenpunkte');
   const stats = trackStats(points);
   const thin = thinTrack(points).map(([lat, lon, ele]): TrackPoint => [

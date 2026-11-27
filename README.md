@@ -14,7 +14,9 @@ eine normale App auf den Startbildschirm legen, ohne App Store.
 - **Veranstaltungen** mit Ort, Datum (auch mehrtägig), Website, Anmeldeschluss, Währung,
   Notizen und **Unterkunft nötig / gebucht**.
 - **Mehrere Strecken pro Veranstaltung** mit Distanz, Höhenmetern (auf und ab), Starttag,
-  Startzeit, Startgebühr, Hinweis zur Gebühr (z. B. Frühbucher) und Zeitlimit.
+  Startzeit, Startgebühr, Hinweis zur Gebühr (z. B. Frühbucher), Zeitlimit und ITRA-Punkten.
+- **Unterkunfts-Vorschläge** (Name, Link, Preis, Notiz), schon im Formular anlegbar; jede
+  Person wählt ihre Unterkunft und markiert sie als gebucht.
 - **Teilnahme pro Strecke:** Interesse, angemeldet oder bezahlt. Jede Person setzt ihren
   eigenen Status.
 - **Kalender** (Monatsansicht) und **Terminliste** mit Filter „Nur meine“.
@@ -23,10 +25,12 @@ eine normale App auf den Startbildschirm legen, ohne App Store.
 - **Import von der Website:** Link einfügen, Claude liest Strecken, Startzeiten,
   Höhenmeter und Gebühren aus und füllt das Formular vor. Gespeichert wird erst nach
   dem Prüfen.
-- **GPX-Suche:** Durchsucht die Website einer Veranstaltung (Startseite und bis zu sechs
-  Unterseiten) nach GPX-Dateien und ordnet sie den Strecken zu, mit Claude oder ohne
-  API-Schlüssel nach Distanz. Übernommen wird erst nach Bestätigung. Links zu Komoot,
-  Strava & Co. werden nur angezeigt.
+- **GPX-Suche:** Durchsucht die Website einer Veranstaltung (Startseite und Unterseiten in
+  zwei Ebenen, auch Subdomains und eingebettete Karten, höchstens 15 Seiten) nach GPX-,
+  KML-, KMZ- und TCX-Dateien, auch in ZIP-Archiven und hinter öffentlichen Dropbox- und
+  Google-Drive-Links, und ordnet sie den Strecken zu, mit Claude oder ohne API-Schlüssel
+  nach Distanz. Übernommen wird erst nach Bestätigung. Öffentliche Touren bei Komoot und
+  Outdooractive werden versucht; Strava & Co. werden nur als Link angezeigt.
 - **Kosten teilen:** Ausgaben pro Veranstaltung, „Wer schuldet wem“ im Tab Kosten.
 
 Rechte: Jedes Mitglied darf Veranstaltungen anlegen und bearbeiten. Löschen dürfen die

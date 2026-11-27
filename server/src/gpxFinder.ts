@@ -8,13 +8,15 @@
  * `archiv.zip#datei.gpx`) und öffentliche Dropbox- oder Google-Drive-Links. Was eine
  * Datei ist, entscheidet ihr Inhalt, nicht die Endung.
  *
- * Links zu Diensten wie Komoot oder Strava lassen sich meist nicht ohne Anmeldung
- * laden; sie werden nur gemeldet. Die Zuordnung zu den Strecken übernimmt die App
+ * Bei Komoot und Outdooractive wird der Verlauf öffentlicher Touren versucht
+ * (routeServices.ts). Andere Dienste wie Strava brauchen eine Anmeldung; sie werden
+ * nur gemeldet. Die Zuordnung zu den Strecken übernimmt die App
  * (KI oder Distanz), siehe app.ts.
  */
 
 import { parseTrackText, type ExternalRoute, type TrackInput } from '@runplanner/shared';
 import { decodeEntities, fetchPage, fetchPublicBytes, ImportError } from './importer.js';
+import { isServiceTrack, loadServiceTrack } from './routeServices.js';
 import { listZip, readZipEntry } from './zip.js';
 
 /** Seiten insgesamt (mit Startseite und eingebetteten Karten). */
@@ -28,6 +30,9 @@ const MAX_ARCHIVES = 4;
 const MAX_TRACK_BYTES = 15 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 40 * 1024 * 1024;
 const CACHE_MS = 10 * 60 * 1000;
+/** Danach werden keine weiteren Seiten mehr geladen, nur noch die gefundenen Dateien. */
+const PAGE_BUDGET_MS = 35_000;
+const MAX_SERVICE_TRACKS = 6;
 
 export interface FoundFile {
   url: string;
@@ -297,6 +302,7 @@ async function loadFile(url: string, label: string, kind: FileKind): Promise<Fou
 }
 
 async function download(url: string): Promise<TrackInput> {
+  if (isServiceTrack(url)) return loadServiceTrack(url);
   const hash = url.indexOf('#');
   const fileUrl = hash > 0 ? url.slice(0, hash) : url;
   const { bytes } = await fetchFile(fileUrl, MAX_ARCHIVE_BYTES);
@@ -323,8 +329,9 @@ async function pool<T, R>(items: T[], limit: number, task: (item: T) => Promise<
   return results;
 }
 
-async function loadPages(urls: string[], site: string): Promise<PageLinks[]> {
+async function loadPages(urls: string[], site: string, deadline: number): Promise<PageLinks[]> {
   const loaded = await pool(urls, 4, async (url) => {
+    if (Date.now() > deadline) return null;
     try {
       const page = await fetchPage(url);
       return extractLinks(page.html, page.url, site);
@@ -357,6 +364,7 @@ function sameTrack(f: FoundFile): string {
 export function createGpxFinder(): GpxFinder {
   return {
     async search(websiteUrl) {
+      const deadline = Date.now() + PAGE_BUDGET_MS;
       const start = await fetchPage(websiteUrl);
       const site = siteOf(new URL(start.url).hostname);
       const first = extractLinks(start.html, start.url, site);
@@ -364,14 +372,16 @@ export function createGpxFinder(): GpxFinder {
       const pages = [first];
 
       // Ebene 1: die besten Unterseiten der Startseite.
-      pages.push(...(await loadPages(nextPages([first], visited, MAX_FIRST_LEVEL, 1), site)));
+      pages.push(...(await loadPages(nextPages([first], visited, MAX_FIRST_LEVEL, 1), site, deadline)));
       // Ebene 2: nur Seiten mit deutlichem Hinweis auf Strecken oder Downloads.
       const embedBudget = Math.min(MAX_EMBEDS, new Set(pages.flatMap((p) => p.embeds)).size);
-      pages.push(...(await loadPages(nextPages(pages.slice(1), visited, MAX_PAGES - pages.length - embedBudget, 2), site)));
+      pages.push(
+        ...(await loadPages(nextPages(pages.slice(1), visited, MAX_PAGES - pages.length - embedBudget, 2), site, deadline)),
+      );
       // Eingebettete Karten anderer Websites.
       const embeds = [...new Set(pages.flatMap((p) => p.embeds))].filter((url) => !visited.has(url)).slice(0, MAX_EMBEDS);
       for (const url of embeds) visited.add(url);
-      pages.push(...(await loadPages(embeds, site)));
+      pages.push(...(await loadPages(embeds, site, deadline)));
 
       const candidates = new Map<string, { label: string; kind: FileKind }>();
       const external = new Map<string, ExternalRoute>();
@@ -399,8 +409,22 @@ export function createGpxFinder(): GpxFinder {
         }
       });
 
+      // Öffentliche Touren bei Komoot und Outdooractive: Verlauf direkt holen.
+      const services = [...external.values()].filter((r) => isServiceTrack(r.url)).slice(0, MAX_SERVICE_TRACKS);
+      const fromServices = await pool(services, 3, async (route): Promise<FoundFile | null> => {
+        try {
+          const track = await loadServiceTrack(route.url);
+          external.delete(route.url);
+          const label = route.label || track.name || '';
+          return { url: route.url, fileName: `${route.service}: ${label || 'Tour'}`.slice(0, 160), label, track };
+        } catch {
+          return null;
+        }
+      });
+
       const seen = new Set<string>();
-      const files = loaded.flat().filter((f) => {
+      const serviceFiles = fromServices.filter((f): f is FoundFile => f !== null);
+      const files = [...loaded.flat(), ...serviceFiles].filter((f) => {
         const key = sameTrack(f);
         if (seen.has(key)) return false;
         seen.add(key);
