@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { notesToAccommodations, type AccommodationInput, type EventInput, type RaceInput } from '@runplanner/shared';
+import { notesToAccommodations, type AccommodationInput, type EventInput, type RaceInput, type RunEvent } from '@runplanner/shared';
 import { api, ApiError } from '../api.js';
 import { useI18n } from '../i18n/index.js';
 import { navigate, useApp } from '../state.js';
@@ -192,9 +192,19 @@ function fromDraft(draft: Draft): EventInput {
 const blank: Draft = toDraft({ name: '', startDate: '', currency: 'EUR', races: [] });
 
 export function EventForm(props: { eventId?: string }) {
-  const { t, f, lang, date } = useI18n();
-  const { events, groupId, putEvent, importEnabled } = useApp();
+  const { t } = useI18n();
+  const { events } = useApp();
   const existing = props.eventId ? events.find((e) => e.id === props.eventId) : undefined;
+  // Erst rendern, wenn die Veranstaltung geladen ist, sonst startet das Formular leer
+  // (z. B. nach Neuladen direkt auf der Bearbeiten-Seite).
+  if (props.eventId && !existing) return <p className="muted">{t.common.loading}</p>;
+  return <EventFormLoaded key={existing?.id ?? 'new'} existing={existing} />;
+}
+
+function EventFormLoaded(props: { existing: RunEvent | undefined }) {
+  const { t, f, lang, date } = useI18n();
+  const { groupId, putEvent, importEnabled } = useApp();
+  const existing = props.existing;
   const [draft, setDraft] = useState<Draft>(() =>
     existing
       ? { ...toDraft(eventToInput(existing)), accommodations: existing.accommodations.map(accommodationToDraft) }
@@ -210,8 +220,6 @@ export function EventForm(props: { eventId?: string }) {
     message: null,
     warnings: [],
   });
-
-  if (props.eventId && !existing) return <p className="muted">{t.common.loading}</p>;
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
   const setRace = (key: string, patch: Partial<RaceDraft>) =>
