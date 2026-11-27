@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractLinks } from './gpxFinder.js';
+import { directShareUrl, extractLinks, siteOf } from './gpxFinder.js';
 
 describe('extractLinks', () => {
   it('findet GPX-Links, Routen-Dienste und passende Unterseiten', () => {
@@ -16,10 +16,10 @@ describe('extractLinks', () => {
       <a href="mailto:x@y.de">Mail</a>
       <div data-track="/maps/marathon.gpx"></div>`;
     const links = extractLinks(html, 'https://lauf.example.org/');
-    expect(links.gpx).toEqual([
-      { url: 'https://lauf.example.org/files/ultra_70k.gpx', label: 'Ultra & Co' },
-      { url: 'https://cdn.example.org/dl.php?id=3&format=gpx', label: 'Kurz GPX' },
-      { url: 'https://lauf.example.org/maps/marathon.gpx', label: '' },
+    expect(links.files).toEqual([
+      { url: 'https://lauf.example.org/files/ultra_70k.gpx', label: 'Ultra & Co', kind: 'track' },
+      { url: 'https://cdn.example.org/dl.php?id=3&format=gpx', label: 'Kurz GPX', kind: 'track' },
+      { url: 'https://lauf.example.org/maps/marathon.gpx', label: '', kind: 'track' },
     ]);
     expect(links.external).toEqual([
       { url: 'https://www.komoot.com/de-de/tour/12345', service: 'Komoot', label: 'Strecke auf Komoot' },
@@ -142,7 +142,9 @@ describe('GPX in ZIP-Archiven', () => {
       return responses[path]?.() ?? new Response('not found', { status: 404 });
     }) as typeof fetch;
     try {
-      expect(extractLinks('<a href="/a.zip?x=1">ZIP</a>', `${site}/`).zip).toEqual([{ url: `${site}/a.zip?x=1`, label: 'ZIP' }]);
+      expect(extractLinks('<a href="/a.zip?x=1">ZIP</a>', `${site}/`).files).toEqual([
+        { url: `${site}/a.zip?x=1`, label: 'ZIP', kind: 'archive' },
+      ]);
       const { createGpxFinder } = await import('./gpxFinder.js');
       const finder = createGpxFinder();
       const result = await finder.search(`${site}/`);
@@ -157,6 +159,84 @@ describe('GPX in ZIP-Archiven', () => {
       expect(Math.round(track.distanceKm)).toBe(24);
       expect(zipLoads).toBe(1);
       await expect(finder.download(`${site}/files/gpx-alle.zip#fehlt.gpx`)).rejects.toThrow();
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+describe('weitergehende Suche', () => {
+  it('erkennt Subdomains, Freigabe-Links und Dateien in eingebetteten Karten', () => {
+    expect(siteOf('www.xy-trail.de')).toBe('xy-trail.de');
+    expect(siteOf('anmeldung.xy-trail.de')).toBe('xy-trail.de');
+    expect(siteOf('race.example.co.uk')).toBe('example.co.uk');
+    expect(directShareUrl(new URL('https://www.dropbox.com/scl/fi/abc/Ultra.gpx?rlkey=x&dl=0'))).toBe(
+      'https://www.dropbox.com/scl/fi/abc/Ultra.gpx?rlkey=x&dl=1',
+    );
+    expect(directShareUrl(new URL('https://drive.google.com/file/d/1AbCdEfGhIjK_lm/view?usp=sharing'))).toBe(
+      'https://drive.google.com/uc?export=download&id=1AbCdEfGhIjK_lm',
+    );
+    expect(directShareUrl(new URL('https://drive.google.com/drive/folders/1AbC'))).toBeNull();
+
+    const html = `
+      <a href="https://anmeldung.xy-trail.de/strecken">Strecken</a>
+      <a href="https://fremd.de/strecken">Strecken</a>
+      <a href="https://www.dropbox.com/s/abc/strecken.zip?dl=0">Alle Strecken</a>
+      <a href="/files/kurz.kml">KML</a>
+      <iframe src="https://maps.example.net/viewer?gpx=https%3A%2F%2Fcdn.xy-trail.de%2Fultra.gpx"></iframe>
+      <iframe data-src="/karte/embed"></iframe>
+      <iframe src="https://widgets.example.net/map/42"></iframe>`;
+    const links = extractLinks(html, 'https://www.xy-trail.de/');
+    expect(links.files).toEqual([
+      { url: 'https://www.dropbox.com/s/abc/strecken.zip?dl=1', label: 'Alle Strecken', kind: 'share' },
+      { url: 'https://www.xy-trail.de/files/kurz.kml', label: 'KML', kind: 'track' },
+      { url: 'https://cdn.xy-trail.de/ultra.gpx', label: '', kind: 'track' },
+    ]);
+    expect(links.subpages.map((s) => s.url).sort()).toEqual([
+      'https://anmeldung.xy-trail.de/strecken',
+      'https://www.xy-trail.de/karte/embed',
+    ]);
+    // Der Viewer mit der Datei im Parameter muss nicht mehr geladen werden.
+    expect(links.embeds).toEqual(['https://widgets.example.net/map/42']);
+  });
+
+  it('sucht zwei Ebenen tief und liest KML, TCX und KMZ', async () => {
+    const site = 'http://93.184.216.34';
+    const kml = `<kml><Document><name>Doc</name><Placemark><name>Kurz KML</name><LineString><coordinates>
+      9.0,48.0,300 9.0,48.09,420</coordinates></LineString></Placemark></Document></kml>`;
+    const tcx = `<TrainingCenterDatabase><Courses><Course><Name>Lang TCX</Name><Track>
+      <Trackpoint><Position><LatitudeDegrees>48</LatitudeDegrees><LongitudeDegrees>9</LongitudeDegrees></Position><AltitudeMeters>300</AltitudeMeters></Trackpoint>
+      <Trackpoint><Position><LatitudeDegrees>48.3</LatitudeDegrees><LongitudeDegrees>9</LongitudeDegrees></Position><AltitudeMeters>700</AltitudeMeters></Trackpoint>
+      </Track></Course></Courses></TrainingCenterDatabase>`;
+    const kmz = makeZip({ 'doc.kml': kml.replace('Kurz KML', 'Mittel KMZ').replace('48.09', '48.2') });
+    const pages: Record<string, () => Response> = {
+      '/': () => html('<a href="/info">Infos</a>'),
+      '/info': () => html('<a href="/info/strecken">Strecken</a><a href="/impressum">Impressum</a>'),
+      '/info/strecken': () =>
+        html('<a href="/dl/kurz.kml">Kurz</a><a href="/dl/lang.tcx">Lang</a><a href="/dl/mittel.kmz">Mittel</a>'),
+      '/dl/kurz.kml': () => new Response(kml, { headers: { 'content-type': 'application/vnd.google-earth.kml+xml' } }),
+      '/dl/lang.tcx': () => new Response(tcx, { headers: { 'content-type': 'application/octet-stream' } }),
+      '/dl/mittel.kmz': () => new Response(kmz, { headers: { 'content-type': 'application/vnd.google-earth.kmz' } }),
+    };
+    function html(body: string) {
+      return new Response(body, { headers: { 'content-type': 'text/html' } });
+    }
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL) =>
+      pages[new URL(String(input)).pathname]?.() ?? new Response('not found', { status: 404 })) as typeof fetch;
+    try {
+      const { createGpxFinder } = await import('./gpxFinder.js');
+      const finder = createGpxFinder();
+      const result = await finder.search(`${site}/`);
+      expect(result.pagesChecked).toBe(3);
+      expect(result.files.map((f) => [f.fileName, f.label, Math.round(f.track.distanceKm)])).toEqual([
+        ['kurz.kml', 'Kurz', 10],
+        ['lang.tcx', 'Lang', 33],
+        ['mittel.kmz', 'Mittel', 22],
+      ]);
+      expect(result.files[1]!.track.gainM).toBe(400);
+      const kmzTrack = await finder.download(result.files[2]!.url);
+      expect(kmzTrack.name).toBe('Mittel KMZ');
     } finally {
       globalThis.fetch = original;
     }

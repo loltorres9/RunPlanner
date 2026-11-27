@@ -239,10 +239,10 @@ export const de = {
   },
   gpxSearch: {
     button: 'GPX von der Website suchen',
-    running: 'Durchsuche die Website nach GPX-Dateien … das kann bis zu einer halben Minute dauern.',
+    running: 'Durchsuche die Website nach Streckendateien (GPX, KML, TCX, auch in ZIP-Dateien) … das kann bis zu einer Minute dauern.',
     title: 'Gefundene GPX-Dateien',
-    none: 'Keine GPX-Dateien gefunden ({pages} Seiten durchsucht).',
-    found: '{files} GPX-Dateien auf {pages} Seiten gefunden.',
+    none: 'Keine Streckendateien gefunden ({pages} Seiten durchsucht).',
+    found: '{files} Streckendateien auf {pages} Seiten gefunden.',
     byAi: 'Zuordnung per KI – bitte kurz prüfen.',
     byDistance: 'Zuordnung nach Distanz – bitte kurz prüfen.',
     noFile: '– keine Datei –',

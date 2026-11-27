@@ -241,10 +241,10 @@ export const en: Messages = {
   },
   gpxSearch: {
     button: 'Find GPX on the website',
-    running: 'Searching the website for GPX files … this can take up to half a minute.',
+    running: 'Searching the website for route files (GPX, KML, TCX, also inside ZIP files) … this can take up to a minute.',
     title: 'GPX files found',
-    none: 'No GPX files found ({pages} pages searched).',
-    found: 'Found {files} GPX files on {pages} pages.',
+    none: 'No route files found ({pages} pages searched).',
+    found: 'Found {files} route files on {pages} pages.',
     byAi: 'Matched by AI – please double-check.',
     byDistance: 'Matched by distance – please double-check.',
     noFile: '– no file –',
